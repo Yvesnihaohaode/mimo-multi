@@ -1,4 +1,5 @@
 import type {
+  ChatAnnotation,
   ChatStreamChunk,
   ResponsesObject,
   ResponsesOutputItem,
@@ -28,6 +29,13 @@ interface ToolCallState {
 
 type ActiveKind = "reasoning" | "message" | null;
 
+interface ResponsesAnnotation {
+  type: string;
+  url: string;
+  title: string;
+  snippet?: string;
+}
+
 class StreamState {
   responseId = newResponseId();
   createdAt = Math.floor(Date.now() / 1000);
@@ -37,6 +45,7 @@ class StreamState {
   activeKind: ActiveKind = null;
   activeItemId: string | null = null;
   activeBuffer = "";
+  activeAnnotations: ResponsesAnnotation[] = [];
   toolCalls = new Map<number, ToolCallState>();
   finalOutput: ResponsesOutputItem[] = [];
   finishReason: ChatStreamChunk["choices"][number]["finish_reason"] | null = null;
@@ -124,6 +133,7 @@ function openMessage(sink: SseSink, state: StreamState): void {
   state.activeKind = "message";
   state.activeItemId = newMessageId();
   state.activeBuffer = "";
+  state.activeAnnotations = [];
   const idx = state.outputIndex++;
   emit(sink, state, "response.output_item.added", {
     output_index: idx,
@@ -141,6 +151,15 @@ function openMessage(sink: SseSink, state: StreamState): void {
     content_index: 0,
     part: { type: "output_text", text: "", annotations: [] },
   });
+}
+
+function translateAnnotation(a: ChatAnnotation): ResponsesAnnotation {
+  return {
+    type: a.type ?? "url_citation",
+    url: a.url ?? "",
+    title: a.title ?? "",
+    ...(a.summary !== undefined ? { snippet: a.summary } : {}),
+  };
 }
 
 function openToolCall(
@@ -210,6 +229,7 @@ function finalizeActive(sink: SseSink, state: StreamState): void {
       item: finalItem,
     });
   } else if (state.activeKind === "message") {
+    const annotations = state.activeAnnotations;
     emit(sink, state, "response.output_text.done", {
       item_id: itemId,
       output_index: outputIndex,
@@ -220,14 +240,14 @@ function finalizeActive(sink: SseSink, state: StreamState): void {
       item_id: itemId,
       output_index: outputIndex,
       content_index: 0,
-      part: { type: "output_text", text: buffer, annotations: [] },
+      part: { type: "output_text", text: buffer, annotations },
     });
     const finalItem: ResponsesOutputItem = {
       id: itemId,
       type: "message",
       role: "assistant",
       status: "completed",
-      content: [{ type: "output_text", text: buffer, annotations: [] }],
+      content: [{ type: "output_text", text: buffer, annotations }],
     };
     state.finalOutput.push(finalItem);
     emit(sink, state, "response.output_item.done", {
@@ -239,6 +259,7 @@ function finalizeActive(sink: SseSink, state: StreamState): void {
   state.activeKind = null;
   state.activeItemId = null;
   state.activeBuffer = "";
+  state.activeAnnotations = [];
 }
 
 function finalizeToolCalls(sink: SseSink, state: StreamState): void {
@@ -309,6 +330,25 @@ function processChunk(sink: SseSink, state: StreamState, chunk: ChatStreamChunk)
       content_index: 0,
       delta: delta.content,
     });
+  }
+
+  // MiMo's web_search returns citations in the first streaming chunk's
+  // `delta.annotations`. Buffer them and emit per-annotation events so Codex
+  // can show inline citations live.
+  if (delta.annotations && delta.annotations.length > 0) {
+    if (state.activeKind !== "message") openMessage(sink, state);
+    for (const a of delta.annotations) {
+      const translated = translateAnnotation(a);
+      const annotationIndex = state.activeAnnotations.length;
+      state.activeAnnotations.push(translated);
+      emit(sink, state, "response.output_text.annotation.added", {
+        item_id: state.activeItemId!,
+        output_index: state.outputIndex - 1,
+        content_index: 0,
+        annotation_index: annotationIndex,
+        annotation: translated,
+      });
+    }
   }
 
   if (delta.tool_calls) {

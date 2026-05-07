@@ -199,6 +199,7 @@ export interface ChatMessage {
   tool_calls?: ChatToolCall[];
   tool_call_id?: string;
   reasoning_content?: string | null;
+  annotations?: ChatAnnotation[];
 }
 
 export interface ChatFunctionTool {
@@ -211,7 +212,37 @@ export interface ChatFunctionTool {
   };
 }
 
-export type ChatTool = ChatFunctionTool;
+// MiMo's builtin web_search tool — server-side search, not a function call.
+// Requires the user to have activated the Web Search Plugin in their MiMo console.
+// See https://platform.xiaomimimo.com/#/docs/usage-guide/tool-calling/web-search
+export interface ChatWebSearchTool {
+  type: "web_search";
+  user_location?: {
+    type?: "approximate";
+    country?: string;
+    region?: string;
+    city?: string;
+    district?: string;
+    longitude?: number;
+    latitude?: number;
+  };
+  max_keyword?: number;
+  force_search?: boolean;
+  limit?: number;
+}
+
+export type ChatTool = ChatFunctionTool | ChatWebSearchTool;
+
+// Citation/annotation returned by MiMo when web_search is used.
+// OpenAI's Responses API uses a similar `url_citation` annotation on output_text.
+export interface ChatAnnotation {
+  type: "url_citation" | string;
+  url?: string;
+  title?: string;
+  summary?: string;
+  start_index?: number;
+  end_index?: number;
+}
 
 export type ChatToolChoice =
   | "auto"
@@ -241,6 +272,7 @@ export interface ChatChoiceMessage {
   content: string | null;
   reasoning_content?: string | null;
   tool_calls?: ChatToolCall[];
+  annotations?: ChatAnnotation[];
   refusal?: string | null;
 }
 
@@ -277,6 +309,7 @@ export interface ChatStreamDelta {
     type?: "function";
     function?: { name?: string; arguments?: string };
   }>;
+  annotations?: ChatAnnotation[];
 }
 
 export interface ChatStreamChoice {

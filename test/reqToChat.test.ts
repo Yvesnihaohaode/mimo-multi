@@ -163,7 +163,7 @@ describe("reqToChat", () => {
     ]);
   });
 
-  it("user message with text + image parts", () => {
+  it("user message with text + image parts (omni model — images preserved)", () => {
     const req: ResponsesRequest = {
       model: "mimo-v2-omni",
       input: [
@@ -187,6 +187,53 @@ describe("reqToChat", () => {
     });
   });
 
+  it("drops image parts on non-omni model and adds an inline placeholder note", () => {
+    // mimo-v2.5-pro and friends return 404 "No endpoints found that support image
+    // input" if image_url parts are forwarded. We strip them with a short note so
+    // the model still has context that an image was attached.
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            { type: "input_text", text: "what's this?" },
+            { type: "input_image", image_url: "https://x/y.png" },
+            { type: "input_image", image_url: "https://x/z.png" },
+          ],
+        },
+      ],
+    };
+    const chat = reqToChat(req);
+    // Should be a single user message with text only (collapsed to string when
+    // all parts are text after dropping images)
+    expect(chat.messages).toHaveLength(1);
+    expect(chat.messages[0].role).toBe("user");
+    const content = chat.messages[0].content;
+    expect(typeof content).toBe("string");
+    expect(content).toContain("what's this?");
+    expect(content).toContain("2 image attachments omitted");
+    expect(content).toContain("mimo-v2-omni");
+    // Definitely no image_url part
+    expect(JSON.stringify(chat.messages[0])).not.toContain("image_url");
+  });
+
+  it("preserves images on the 1m context omni variant", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2-omni[1m]",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_image", image_url: "https://x/y.png" }],
+        },
+      ],
+    };
+    const chat = reqToChat(req);
+    expect(JSON.stringify(chat.messages[0])).toContain("image_url");
+  });
+
   it("max_output_tokens maps to max_completion_tokens (not max_tokens)", () => {
     const req: ResponsesRequest = {
       model: "mimo-v2.5-pro",
@@ -203,12 +250,12 @@ describe("reqToChat", () => {
     expect(reqToChat(req).stream).toBe(true);
   });
 
-  it("drops builtin tools without name (web_search_preview, etc.) — MiMo chat API can't use them", () => {
+  it("drops only the builtin tools that have no MiMo equivalent (code_interpreter etc.)", () => {
+    // web_search_preview is now TRANSLATED to MiMo's web_search builtin, so it
+    // should remain. code_interpreter has no MiMo equivalent → dropped.
     const req: ResponsesRequest = {
       model: "mimo-v2.5-pro",
       input: "x",
-      // Codex / Responses-API may send these builtin tool shapes that have no `name`.
-      // Cast through unknown because our type system doesn't enforce builtin tool fields.
       tools: [
         { type: "web_search_preview" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
         { type: "code_interpreter" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
@@ -216,8 +263,9 @@ describe("reqToChat", () => {
       ] as ResponsesRequest["tools"],
     };
     const chat = reqToChat(req);
-    expect(chat.tools).toHaveLength(1);
-    expect(chat.tools![0].function.name).toBe("shell");
+    expect(chat.tools).toHaveLength(2);
+    const types = chat.tools!.map((t) => t.type).sort();
+    expect(types).toEqual(["function", "web_search"]);
   });
 
   it("translates local_shell builtin into a function tool named 'shell'", () => {
@@ -244,16 +292,125 @@ describe("reqToChat", () => {
     expect(chat.tools).toBeUndefined(); // empty after filter, field omitted entirely
   });
 
-  it("when ALL tools get filtered, the tools field is omitted entirely (not empty array)", () => {
+  it("when ALL tools get filtered (truly unsupported only), the tools field is omitted entirely", () => {
     const req: ResponsesRequest = {
       model: "mimo-v2.5-pro",
       input: "x",
       tools: [
-        { type: "web_search_preview" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+        { type: "code_interpreter" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
         { type: "image_generation" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
       ] as ResponsesRequest["tools"],
     };
     const chat = reqToChat(req);
     expect(chat.tools).toBeUndefined();
+  });
+
+  it("translates `custom` tool type into a function tool with permissive schema", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "x",
+      tools: [
+        {
+          type: "custom",
+          name: "my_grammar_tool",
+          description: "Output a SQL query.",
+          format: { type: "grammar", syntax: "lark", definition: "..." },
+        } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+      ] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req);
+    expect(chat.tools).toHaveLength(1);
+    const fn = chat.tools![0].function;
+    expect(fn.name).toBe("my_grammar_tool");
+    expect(fn.description).toContain("SQL");
+    expect(fn.description).toContain("grammar");
+    expect((fn.parameters as { type: string }).type).toBe("object");
+  });
+
+  it("recurses into `namespace` wrapper and flattens nested function + builtin tools", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "x",
+      tools: [
+        {
+          type: "namespace",
+          name: "playwright",
+          tools: [
+            { type: "function", name: "browser_open", parameters: { type: "object" } },
+            { type: "function", name: "browser_click", parameters: { type: "object" } },
+            { type: "code_interpreter" }, // nested server-only — should drop
+          ],
+        } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+        { type: "function", name: "shell", parameters: { type: "object" } },
+      ] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req);
+    expect(chat.tools).toHaveLength(3);
+    const names = chat.tools!
+      .filter((t): t is { type: "function"; function: { name: string } } => t.type === "function")
+      .map((t) => t.function.name)
+      .sort();
+    expect(names).toEqual(["browser_click", "browser_open", "shell"]);
+  });
+
+  it("server-side-only tools (code_interpreter, computer_use, etc.) are silently dropped", () => {
+    // These have no MiMo equivalent; they're silently dropped.
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "x",
+      tools: [
+        { type: "code_interpreter" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+        { type: "computer_use_preview" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+        { type: "image_generation" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+      ] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req);
+    expect(chat.tools).toBeUndefined();
+  });
+
+  it("Codex web_search_preview is translated to MiMo's native web_search builtin", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "今天上海天气?",
+      tools: [
+        {
+          type: "web_search_preview",
+          user_location: { type: "approximate", country: "China", city: "Shanghai" },
+          search_context_size: "medium",
+        } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+      ] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req);
+    expect(chat.tools).toHaveLength(1);
+    const tool = chat.tools![0] as { type: string; user_location?: { city?: string } };
+    expect(tool.type).toBe("web_search");
+    expect(tool.user_location?.city).toBe("Shanghai");
+    // Codex's search_context_size has no MiMo equivalent → omitted
+    expect((tool as Record<string, unknown>).search_context_size).toBeUndefined();
+    // No `function` wrapper — it's a builtin tool, not a function tool
+    expect((tool as Record<string, unknown>).function).toBeUndefined();
+  });
+
+  it("plain Codex web_search (no user_location) is translated and preserves MiMo extras", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "x",
+      tools: [
+        {
+          type: "web_search",
+          max_keyword: 5,
+          force_search: true,
+          limit: 3,
+        } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+      ] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req);
+    expect(chat.tools).toHaveLength(1);
+    const tool = chat.tools![0] as Record<string, unknown>;
+    expect(tool.type).toBe("web_search");
+    expect(tool.max_keyword).toBe(5);
+    expect(tool.force_search).toBe(true);
+    expect(tool.limit).toBe(3);
+    expect(tool.user_location).toBeUndefined();
   });
 });

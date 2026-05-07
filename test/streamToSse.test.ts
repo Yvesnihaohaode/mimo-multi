@@ -250,6 +250,41 @@ describe("streamToSse", () => {
     }
   });
 
+  it("annotations from web_search emit response.output_text.annotation.added events and land on the final part", async () => {
+    const sink = makeMemorySink();
+    await pipeChatStreamToResponses(
+      sink,
+      {
+        chunks: fromList([
+          chunk({
+            content: "",
+            annotations: [
+              { type: "url_citation", url: "https://a/b", title: "T1", summary: "S1" },
+              { type: "url_citation", url: "https://c/d", title: "T2" },
+            ],
+          }),
+          chunk({ content: "Hello cited" }, "stop"),
+        ]),
+      },
+      req,
+      { exposeReasoning: true }
+    );
+
+    const annotationEvents = sink.events.filter(
+      (e) => e.event === "response.output_text.annotation.added"
+    );
+    expect(annotationEvents).toHaveLength(2);
+    expect((annotationEvents[0].data as { annotation: { url: string } }).annotation.url).toBe("https://a/b");
+    expect((annotationEvents[1].data as { annotation: { url: string } }).annotation.url).toBe("https://c/d");
+
+    // Final completed event should carry both annotations on the output_text
+    const completed = sink.events.find((e) => e.event === "response.completed")!;
+    const resp = (completed.data as { response: { output: Array<{ content: Array<{ annotations: Array<{ url: string }> }> }> } }).response;
+    const part = resp.output[0].content[0];
+    expect(part.annotations).toHaveLength(2);
+    expect(part.annotations.map((a) => a.url)).toEqual(["https://a/b", "https://c/d"]);
+  });
+
   it("response.completed contains a fully-formed Response object", async () => {
     const sink = makeMemorySink();
     await pipeChatStreamToResponses(

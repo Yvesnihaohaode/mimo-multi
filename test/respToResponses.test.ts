@@ -120,4 +120,39 @@ describe("respToResponses", () => {
     expect(r.output[1].id).toMatch(/^msg_/);
     expect(r.output[2].id).toMatch(/^fc_/);
   });
+
+  it("forwards web_search annotations (url_citation) onto the output_text content part", () => {
+    const chat: ChatResponse = {
+      id: "x",
+      object: "chat.completion",
+      created: 0,
+      model: "mimo-v2.5-pro",
+      choices: [
+        {
+          index: 0,
+          finish_reason: "stop",
+          message: {
+            role: "assistant",
+            content: "上海明天多云。",
+            annotations: [
+              {
+                type: "url_citation",
+                url: "https://example.com/wx",
+                title: "Shanghai weather",
+                summary: "tomorrow cloudy",
+              },
+            ],
+          },
+        },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    };
+    const r = respToResponses(chat, baseReq, { exposeReasoning: false });
+    const msg = r.output[0] as { content: Array<{ annotations: Array<{ type: string; url: string; title: string; snippet?: string }> }> };
+    expect(msg.content[0].annotations).toHaveLength(1);
+    expect(msg.content[0].annotations[0].type).toBe("url_citation");
+    expect(msg.content[0].annotations[0].url).toBe("https://example.com/wx");
+    expect(msg.content[0].annotations[0].title).toBe("Shanghai weather");
+    expect(msg.content[0].annotations[0].snippet).toBe("tomorrow cloudy");
+  });
 });

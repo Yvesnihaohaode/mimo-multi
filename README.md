@@ -37,7 +37,7 @@ The repo ships [`scripts/install.sh`](./scripts/install.sh) (Linux / macOS / Git
 
 ```bash
 # Remote one-liner (replace with your actual raw URL)
-curl -fsSL https://github.com/7as0nch/mimo2codex/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/7as0nch/mimo2codex/main/scripts/install.sh | bash
 
 # Or local: clone first, then run
 git clone https://github.com/your-org/mimo2codex.git
@@ -52,7 +52,7 @@ MIMO_API_KEY=sk-xxx ./scripts/install.sh --start
 
 ```powershell
 # Remote one-liner
-irm https://github.com/7as0nch/mimo2codex/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/7as0nch/mimo2codex/main/scripts/install.ps1 | iex
 
 # Or local
 git clone https://github.com/your-org/mimo2codex.git
@@ -395,6 +395,56 @@ Check:
 **Upstream returns 401 / `authentication_error`**
 
 Your `MIMO_API_KEY` (the one mimo2codex uses to call MiMo) is invalid. Get a new one at the [MiMo console](https://platform.xiaomimimo.com/#/console/api-keys). `sk-xxx` keys go with `https://api.xiaomimimo.com/v1`; `tp-xxx` keys go with `https://token-plan-cn.xiaomimimo.com/v1`.
+
+---
+
+**`MiMo returned 404 ... No endpoints found that support image input`**
+
+The request includes image content but your model (`mimo-v2.5-pro`, `mimo-v2-flash`, etc.) doesn't accept images. Only `mimo-v2-omni` does. mimo2codex now strips images for non-omni models automatically and inserts a short placeholder so the model has context. You'll see a one-line warning in the proxy log:
+
+```
+WARN dropped 1 image part(s) — model "mimo-v2.5-pro" does not support image input (only mimo-v2-omni does)
+```
+
+If you actually want vision, switch to `mimo-v2-omni` in `~/.codex/config.toml`.
+
+---
+
+**`dropping unsupported tool type "xxx"` warnings in the log**
+
+Here's how each tool type from Codex is handled:
+
+| Tool type | What mimo2codex does | Notes |
+|---|---|---|
+| `function` | ✅ pass through | standard |
+| `local_shell` | ✅ rewritten as `shell` function tool | Codex routes both names to the same handler |
+| `custom` | ✅ rewritten as a function tool | grammar enforcement is lost but the model can still call it |
+| `namespace` | ✅ recursed into, nested tools flattened | MCP servers, grouped tools |
+| **`web_search` / `web_search_preview`** | ✅ **translated to MiMo's native `web_search` builtin** | see below |
+| `code_interpreter` | ❌ silently dropped (debug log) | OpenAI/Azure server-side; no MiMo equivalent |
+| `file_search` / `image_generation` | ❌ silently dropped | server-side |
+| `computer_use_preview` / `computer_use` | ❌ silently dropped | server-side |
+| anything else | ❌ dropped, **WARN on first occurrence per type** | open an issue if you hit this |
+
+The "server-side" tools have no implementation outside OpenAI/Azure infrastructure — forwarding them to MiMo would just produce errors. The previous version warned on every request (very noisy); now known server-side tools are completely silent at default log level, and unknown types log only the first time.
+
+---
+
+**Does web search work?**
+
+**Yes.** mimo2codex translates Codex's `web_search` / `web_search_preview` tool definitions into MiMo's native [Web Search builtin](https://platform.xiaomimimo.com/#/docs/usage-guide/tool-calling/web-search), including:
+
+- forwarding `user_location` (country / region / city / lat-lon)
+- forwarding MiMo-specific knobs (`max_keyword`, `force_search`, `limit`) if Codex sent them
+- translating MiMo's `annotations` (citations) back into Codex's `url_citation` annotations on the `output_text` content part — Codex shows them as inline link citations
+- emitting `response.output_text.annotation.added` events per citation while streaming
+
+**Prerequisites**:
+
+1. Activate the **Web Search Plugin** in [your MiMo console → Plugin Management](https://platform.xiaomimimo.com/#/console/plugin) (separately billed, see [Pricing](https://platform.xiaomimimo.com/#/docs/pricing))
+2. Be aware: a single search round may invoke multiple concurrent keyword searches — each is billed. Use `max_keyword` to cap.
+
+Once activated, no extra config is needed. Just enable web search in Codex and ask a current-events question.
 
 ---
 

@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   ChatRequest,
   ChatTool,
+  ChatWebSearchTool,
   ChatToolChoice,
   ChatToolCall,
   ResponsesContentPart,
@@ -14,20 +15,47 @@ import type {
 } from "./types.js";
 import { log } from "../util/log.js";
 
-function partsToChatContent(parts: ResponsesContentPart[] | string): string | ChatContentPart[] {
+// MiMo: only `mimo-v2-omni` and any explicit *-omni* variants accept image /
+// audio / video parts. Other models (mimo-v2.5-pro, mimo-v2.5-pro[1m],
+// mimo-v2-flash, …) return "No endpoints found that support image input"
+// when given image_url parts. Detect once per request.
+function modelSupportsImages(model: string): boolean {
+  return /omni/i.test(model);
+}
+
+function partsToChatContent(
+  parts: ResponsesContentPart[] | string,
+  ctx: { model: string; supportsImages: boolean }
+): string | ChatContentPart[] {
   if (typeof parts === "string") return parts;
 
   const out: ChatContentPart[] = [];
+  let droppedImages = 0;
   for (const p of parts) {
     if (p.type === "input_text" || p.type === "output_text") {
       out.push({ type: "text", text: p.text });
     } else if (p.type === "input_image") {
-      out.push({ type: "image_url", image_url: { url: p.image_url, detail: p.detail } });
+      if (ctx.supportsImages) {
+        out.push({ type: "image_url", image_url: { url: p.image_url, detail: p.detail } });
+      } else {
+        droppedImages++;
+      }
     } else if (p.type === "input_file") {
       // MiMo doesn't natively support file inputs in chat completions.
       // Drop the part but leave the message intact.
       log.warn("dropped input_file part — MiMo chat API does not accept file inputs");
     }
+  }
+
+  if (droppedImages > 0) {
+    log.warn(
+      `dropped ${droppedImages} image part(s) — model "${ctx.model}" does not support image input (only mimo-v2-omni does)`
+    );
+    // Add a short inline note so the model knows context was lost.
+    out.push({
+      type: "text",
+      text: `[${droppedImages} image attachment${droppedImages > 1 ? "s" : ""} omitted: this model does not support image input. Use mimo-v2-omni for vision tasks.]`,
+    });
   }
 
   // If the message is purely text, collapse to a string for cleaner upstream payloads.
@@ -38,9 +66,12 @@ function partsToChatContent(parts: ResponsesContentPart[] | string): string | Ch
   return out;
 }
 
-function messageItemToChat(item: ResponsesMessageItem): ChatMessage {
+function messageItemToChat(
+  item: ResponsesMessageItem,
+  ctx: { model: string; supportsImages: boolean }
+): ChatMessage {
   const role = item.role === "developer" ? "system" : item.role;
-  const content = partsToChatContent(item.content);
+  const content = partsToChatContent(item.content, ctx);
   if (role === "assistant") {
     return { role: "assistant", content: typeof content === "string" ? content : "" };
   }
@@ -81,11 +112,37 @@ const LOCAL_SHELL_FN: ChatTool = {
   },
 };
 
-function toolToChat(t: ResponsesTool): ChatTool | null {
+// Tools that exist server-side at OpenAI but have no equivalent at MiMo.
+// We drop them silently (only log at debug level) — there's nothing a chat
+// completions provider can do with them. NOTE: web_search and
+// web_search_preview are NOT in this list — MiMo has its own native
+// web_search builtin (requires the Web Search Plugin to be activated in
+// the MiMo console: https://platform.xiaomimimo.com/#/console/plugin).
+const SERVER_SIDE_TOOLS = new Set([
+  "code_interpreter",
+  "file_search",
+  "image_generation",
+  "computer_use_preview",
+  "computer_use",
+]);
+
+// Track tool types we've already warned about so we don't spam the log on
+// every request (Codex re-sends the full tool list each turn).
+const warnedTypes = new Set<string>();
+function warnOnce(toolType: string, msg: string): void {
+  if (warnedTypes.has(toolType)) return;
+  warnedTypes.add(toolType);
+  log.warn(msg);
+}
+
+// Returns one or more ChatTools (a `namespace` wrapper can expand to many),
+// or null if the tool is unrecognized / unsupported.
+function toolToChat(t: ResponsesTool): ChatTool | ChatTool[] | null {
+  // 1. Standard OpenAI function tool — pass through.
   if (t.type === "function") {
     const ft = t as { type: "function"; name?: string; description?: string; parameters?: Record<string, unknown>; strict?: boolean | null };
     if (!ft.name) {
-      log.warn("dropping function tool with no name");
+      log.debug("dropping function tool with no name");
       return null;
     }
     return {
@@ -98,13 +155,105 @@ function toolToChat(t: ResponsesTool): ChatTool | null {
       },
     };
   }
+
+  // 2. Codex's `local_shell` builtin → emit as a regular `shell` function tool
+  //    with the canonical schema (see LOCAL_SHELL_FN above). Codex's tool router
+  //    accepts both names.
   if (t.type === "local_shell") {
     return LOCAL_SHELL_FN;
   }
-  // Unknown / unsupported builtin tool. MiMo's chat API only accepts function
-  // tools, so we drop these silently-with-a-warning rather than crashing.
-  log.warn(
-    `dropping unsupported tool type "${t.type}" — MiMo's chat completions API only accepts function tools`
+
+  // 2.5. OpenAI's `web_search` / `web_search_preview` → MiMo's native `web_search`.
+  //      MiMo's format is similar (user_location + a few extras like max_keyword,
+  //      force_search, limit). OpenAI's `search_context_size` has no MiMo
+  //      equivalent — drop it. The MiMo Web Search Plugin must be activated
+  //      in the user's console for this to actually work upstream.
+  if (t.type === "web_search" || t.type === "web_search_preview") {
+    const w = t as {
+      user_location?: ChatWebSearchTool["user_location"];
+      max_keyword?: number;
+      force_search?: boolean;
+      limit?: number;
+    };
+    const tool: ChatWebSearchTool = { type: "web_search" };
+    if (w.user_location) tool.user_location = w.user_location;
+    if (typeof w.max_keyword === "number") tool.max_keyword = w.max_keyword;
+    if (typeof w.force_search === "boolean") tool.force_search = w.force_search;
+    if (typeof w.limit === "number") tool.limit = w.limit;
+    return tool;
+  }
+
+  // 3. Codex / OpenAI `custom` tool — freeform tool, often used for grammar-
+  //    constrained outputs. We can't enforce the grammar at MiMo, but we can
+  //    forward the name + description as a parameter-less function so the
+  //    model can still call it. Format here:
+  //      { type: "custom", name, description?, format?: { type: "grammar" | "text", ... } }
+  if (t.type === "custom") {
+    const ct = t as { name?: string; description?: string; format?: { type?: string } };
+    if (!ct.name) {
+      log.debug("dropping custom tool with no name");
+      return null;
+    }
+    const formatType = ct.format?.type;
+    const desc =
+      (ct.description ?? "") +
+      (formatType
+        ? ` (originally a "${formatType}"-format custom tool; output should follow that format).`
+        : "");
+    return {
+      type: "function",
+      function: {
+        name: ct.name,
+        description: desc.trim() || undefined,
+        // Permissive schema since we don't know the original input shape.
+        parameters: {
+          type: "object",
+          properties: {
+            input: {
+              type: "string",
+              description: "Input text for the tool.",
+            },
+          },
+          additionalProperties: true,
+        },
+        strict: null,
+      },
+    };
+  }
+
+  // 4. `namespace` wrapper — Codex bundles MCP / grouped tools under this. Shape
+  //    we've seen in the wild:
+  //       { type: "namespace", name?: string, tools?: Tool[] }
+  //    Recurse into nested tools and flatten. If there's no nested array, drop.
+  if (t.type === "namespace") {
+    const ns = t as { name?: string; tools?: ResponsesTool[] };
+    if (!Array.isArray(ns.tools) || ns.tools.length === 0) {
+      log.debug(
+        `dropping "namespace" tool ${ns.name ? `"${ns.name}"` : ""} with no nested tools`
+      );
+      return null;
+    }
+    const nested: ChatTool[] = [];
+    for (const inner of ns.tools) {
+      const r = toolToChat(inner);
+      if (Array.isArray(r)) nested.push(...r);
+      else if (r) nested.push(r);
+    }
+    return nested.length > 0 ? nested : null;
+  }
+
+  // 5. Server-side tools that only OpenAI/Azure can fulfill — silently drop.
+  if (SERVER_SIDE_TOOLS.has(t.type)) {
+    log.debug(
+      `dropping server-side tool "${t.type}" — no MiMo equivalent (only OpenAI/Azure can fulfill)`
+    );
+    return null;
+  }
+
+  // 6. Truly unknown — warn once per type so we get a heads-up but don't spam.
+  warnOnce(
+    t.type,
+    `dropping unsupported tool type "${t.type}" — please open an issue if this should be translated`
   );
   return null;
 }
@@ -142,7 +291,10 @@ function flushAssistant(messages: ChatMessage[], state: AssemblyState): void {
   state.pendingAssistantText = null;
 }
 
-function inputItemsToMessages(items: ResponsesInputItem[]): ChatMessage[] {
+function inputItemsToMessages(
+  items: ResponsesInputItem[],
+  ctx: { model: string; supportsImages: boolean }
+): ChatMessage[] {
   const out: ChatMessage[] = [];
   const state: AssemblyState = {
     pendingReasoning: null,
@@ -155,7 +307,7 @@ function inputItemsToMessages(items: ResponsesInputItem[]): ChatMessage[] {
       case "message": {
         if (item.role === "assistant") {
           // Assistant message — fold into pending so reasoning_content can join it.
-          const content = partsToChatContent(item.content);
+          const content = partsToChatContent(item.content, ctx);
           state.pendingAssistantText =
             typeof content === "string" ? content : "";
           // If assistant message comes alone (without preceding reasoning or
@@ -163,7 +315,7 @@ function inputItemsToMessages(items: ResponsesInputItem[]): ChatMessage[] {
           flushAssistant(out, state);
         } else {
           flushAssistant(out, state);
-          out.push(messageItemToChat(item));
+          out.push(messageItemToChat(item, ctx));
         }
         break;
       }
@@ -201,6 +353,10 @@ function inputItemsToMessages(items: ResponsesInputItem[]): ChatMessage[] {
 
 export function reqToChat(req: ResponsesRequest): ChatRequest {
   const messages: ChatMessage[] = [];
+  const ctx = {
+    model: req.model,
+    supportsImages: modelSupportsImages(req.model),
+  };
 
   if (req.instructions) {
     messages.push({ role: "system", content: req.instructions });
@@ -209,7 +365,7 @@ export function reqToChat(req: ResponsesRequest): ChatRequest {
   if (typeof req.input === "string") {
     messages.push({ role: "user", content: req.input });
   } else if (Array.isArray(req.input)) {
-    for (const m of inputItemsToMessages(req.input)) {
+    for (const m of inputItemsToMessages(req.input, ctx)) {
       messages.push(m);
     }
   }
@@ -221,9 +377,12 @@ export function reqToChat(req: ResponsesRequest): ChatRequest {
   };
 
   if (req.tools && req.tools.length > 0) {
-    const mapped = req.tools
-      .map(toolToChat)
-      .filter((t): t is ChatTool => t !== null);
+    const mapped: ChatTool[] = [];
+    for (const t of req.tools) {
+      const r = toolToChat(t);
+      if (Array.isArray(r)) mapped.push(...r);
+      else if (r) mapped.push(r);
+    }
     if (mapped.length > 0) chat.tools = mapped;
   }
   const tc = toolChoiceToChat(req.tool_choice);

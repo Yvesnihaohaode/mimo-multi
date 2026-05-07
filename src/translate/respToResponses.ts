@@ -54,12 +54,24 @@ export function respToResponses(
   }
 
   if (message?.content) {
+    // Translate MiMo annotations (url_citation with url/title/summary) into
+    // Codex-shape annotations on the output_text content part. Codex displays
+    // these as inline citations.
+    const annotations =
+      message.annotations?.map((a) => ({
+        type: a.type ?? "url_citation",
+        url: a.url ?? "",
+        title: a.title ?? "",
+        ...(a.summary !== undefined ? { snippet: a.summary } : {}),
+      })) ?? [];
     output.push({
       type: "message",
       id: newMessageId(),
       role: "assistant",
       status: "completed",
-      content: [{ type: "output_text", text: message.content, annotations: [] }],
+      content: [
+        { type: "output_text", text: message.content, annotations },
+      ],
     });
   }
 
