@@ -310,6 +310,50 @@ describe("reqToChat", () => {
     expect(chat.messages[0].content).toBe("hello");
   });
 
+  it("filters input_text parts whose `text` is empty/missing — MiMo rejects them", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            { type: "input_text", text: "" },
+            { type: "input_text" } as unknown as { type: "input_text"; text: string },
+            { type: "input_text", text: "real content" },
+            { type: "input_image", image_url: "https://x/y.png" },
+          ],
+        },
+      ],
+    };
+    const chat = reqToChat(req);
+    const content = chat.messages[0].content as Array<{ type: string; text?: string }>;
+    const textParts = content.filter((p) => p.type === "text");
+    expect(textParts).toHaveLength(1);
+    expect(textParts[0].text).toBe("real content");
+  });
+
+  it("on pro model with image-only message, output is non-empty text-only string (the original 400 case)", () => {
+    // The exact scenario that produced "MiMo returned 400: text is not set":
+    // model = mimo-v2.5-pro (no vision) + content has only an image.
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_image", image_url: "https://x/y.png" }],
+        },
+      ],
+    };
+    const chat = reqToChat(req);
+    const content = chat.messages[0].content;
+    expect(typeof content).toBe("string");
+    expect((content as string).length).toBeGreaterThan(0);
+    expect(content).toContain("image attachment");
+    expect(JSON.stringify(chat.messages[0])).not.toContain("image_url");
+  });
+
   it("max_output_tokens maps to max_completion_tokens (not max_tokens)", () => {
     const req: ResponsesRequest = {
       model: "mimo-v2.5-pro",

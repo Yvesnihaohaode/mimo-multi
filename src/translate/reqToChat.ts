@@ -38,7 +38,13 @@ function partsToChatContent(
   let droppedImages = 0;
   for (const p of parts) {
     if (p.type === "input_text" || p.type === "output_text") {
-      out.push({ type: "text", text: p.text });
+      // Defensive: Codex/clients sometimes send malformed text parts where
+      // `text` is missing or non-string. Coerce to "" and drop empties —
+      // MiMo's parser rejects parts where `text` is missing/empty with
+      // "Param Incorrect: `text` is not set".
+      const text = typeof p.text === "string" ? p.text : "";
+      if (text.length === 0) continue;
+      out.push({ type: "text", text });
     } else if (p.type === "input_image") {
       if (ctx.supportsImages) {
         out.push({ type: "image_url", image_url: { url: p.image_url, detail: p.detail } });
@@ -50,6 +56,8 @@ function partsToChatContent(
       // Drop the part but leave the message intact.
       log.warn("dropped input_file part — MiMo chat API does not accept file inputs");
     }
+    // Unknown part types (e.g. summary_text in some Responses variants) are
+    // silently skipped — they'd cause MiMo to 400 if forwarded as-is.
   }
 
   if (droppedImages > 0) {

@@ -63,6 +63,9 @@ export async function callMimo(
     tools: body.tools?.length ?? 0,
     apiKey: redactKey(cfg.apiKey),
   });
+  // Full body in --verbose. Useful when MiMo returns an opaque 400 — you can
+  // see exactly what the proxy sent. No api key leaks; that's only in headers.
+  log.debug("upstream POST body", body);
 
   const attempt = async (): Promise<Response> => {
     const res = await fetch(url, {
