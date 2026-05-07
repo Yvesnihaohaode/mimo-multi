@@ -400,13 +400,26 @@ Your `MIMO_API_KEY` (the one mimo2codex uses to call MiMo) is invalid. Get a new
 
 **`MiMo returned 404 ... No endpoints found that support image input`**
 
-The request includes image content but your model (`mimo-v2.5-pro`, `mimo-v2-flash`, etc.) doesn't accept images. Only `mimo-v2-omni` does. mimo2codex now strips images for non-omni models automatically and inserts a short placeholder so the model has context. You'll see a one-line warning in the proxy log:
+The request has images but your model doesn't accept them. Per [MiMo's docs](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/multimodal-understanding/image-understanding), **only `mimo-v2.5` and `mimo-v2-omni` support image input** — `mimo-v2.5-pro`, `mimo-v2.5-pro[1m]`, and `mimo-v2-flash` do **not**.
 
-```
-WARN dropped 1 image part(s) — model "mimo-v2.5-pro" does not support image input (only mimo-v2-omni does)
-```
+mimo2codex auto-detects this:
 
-If you actually want vision, switch to `mimo-v2-omni` in `~/.codex/config.toml`.
+| Model | Vision |
+|---|---|
+| `mimo-v2.5` / `mimo-v2.5[1m]` | ✅ |
+| `mimo-v2-omni` / `mimo-v2-omni[1m]` | ✅ |
+| `mimo-v2.5-pro` / `mimo-v2.5-pro[1m]` | ❌ (images stripped + placeholder text inserted) |
+| `mimo-v2-flash` | ❌ |
+
+For vision, set the model to `mimo-v2.5` or `mimo-v2-omni` in `~/.codex/config.toml`.
+
+---
+
+**`MiMo returned 400 Param Incorrect: \`text\` is not set`**
+
+MiMo's image-understanding API **requires every image-bearing user message to include at least one text part** alongside the image. OpenAI's chat API doesn't enforce this, so Codex sometimes sends image-only messages (e.g. paste-and-send on the desktop app), which MiMo then rejects.
+
+mimo2codex now adds a single-space text part automatically whenever it sees an `image_url` part with no companion text. The image alone is enough for the model to infer intent (it'll describe what it sees), and your request stops 400'ing.
 
 ---
 

@@ -234,6 +234,82 @@ describe("reqToChat", () => {
     expect(JSON.stringify(chat.messages[0])).toContain("image_url");
   });
 
+  it("preserves images on plain `mimo-v2.5` (image-understanding model per docs)", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            { type: "input_text", text: "describe" },
+            { type: "input_image", image_url: "https://x/y.png" },
+          ],
+        },
+      ],
+    };
+    const chat = reqToChat(req);
+    expect(JSON.stringify(chat.messages[0])).toContain("image_url");
+  });
+
+  it("DROPS images on mimo-v2.5-pro (per official docs: only mimo-v2.5 and -omni support vision)", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            { type: "input_text", text: "what's this?" },
+            { type: "input_image", image_url: "https://x/y.png" },
+          ],
+        },
+      ],
+    };
+    const chat = reqToChat(req);
+    expect(JSON.stringify(chat.messages[0])).not.toContain("image_url");
+    expect(chat.messages[0].content).toContain("what's this?");
+    expect(chat.messages[0].content).toContain("image attachment");
+  });
+
+  it("ensures a text part exists when image_url is present (avoid MiMo 400 'text is not set')", () => {
+    // Image-only user message — Codex CLI / desktop allow paste+enter without typing.
+    // MiMo's image API requires at least one text part in the content array.
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_image", image_url: "https://x/y.png" }],
+        },
+      ],
+    };
+    const chat = reqToChat(req);
+    const content = chat.messages[0].content;
+    expect(Array.isArray(content)).toBe(true);
+    const parts = content as Array<{ type: string }>;
+    // Must have BOTH image_url and text parts
+    expect(parts.some((p) => p.type === "image_url")).toBe(true);
+    expect(parts.some((p) => p.type === "text")).toBe(true);
+  });
+
+  it("does NOT add a fallback text part when image is absent (text-only stays clean)", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "hello" }],
+        },
+      ],
+    };
+    const chat = reqToChat(req);
+    // text-only collapses to string, no extra spaces or padding parts
+    expect(chat.messages[0].content).toBe("hello");
+  });
+
   it("max_output_tokens maps to max_completion_tokens (not max_tokens)", () => {
     const req: ResponsesRequest = {
       model: "mimo-v2.5-pro",

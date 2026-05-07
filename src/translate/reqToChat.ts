@@ -15,12 +15,17 @@ import type {
 } from "./types.js";
 import { log } from "../util/log.js";
 
-// MiMo: only `mimo-v2-omni` and any explicit *-omni* variants accept image /
-// audio / video parts. Other models (mimo-v2.5-pro, mimo-v2.5-pro[1m],
-// mimo-v2-flash, …) return "No endpoints found that support image input"
-// when given image_url parts. Detect once per request.
+// Per MiMo docs (https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/multimodal-understanding/image-understanding),
+// only `mimo-v2.5` and `mimo-v2-omni` (and *-omni* variants) accept image
+// input. The other v2.5 variants (mimo-v2.5-pro, mimo-v2.5-pro[1m],
+// mimo-v2-flash, …) return 404 "No endpoints found that support image input"
+// when given image_url parts.
 function modelSupportsImages(model: string): boolean {
-  return /omni/i.test(model);
+  // Strip the optional context-window suffix like [1m]
+  const base = model.replace(/\[[^\]]*\]$/, "").toLowerCase();
+  if (base.includes("omni")) return true;
+  if (base === "mimo-v2.5") return true;
+  return false;
 }
 
 function partsToChatContent(
@@ -49,13 +54,25 @@ function partsToChatContent(
 
   if (droppedImages > 0) {
     log.warn(
-      `dropped ${droppedImages} image part(s) — model "${ctx.model}" does not support image input (only mimo-v2-omni does)`
+      `dropped ${droppedImages} image part(s) — model "${ctx.model}" does not support image input (use mimo-v2.5 or mimo-v2-omni for vision)`
     );
     // Add a short inline note so the model knows context was lost.
     out.push({
       type: "text",
-      text: `[${droppedImages} image attachment${droppedImages > 1 ? "s" : ""} omitted: this model does not support image input. Use mimo-v2-omni for vision tasks.]`,
+      text: `[${droppedImages} image attachment${droppedImages > 1 ? "s" : ""} omitted: this model does not support image input. Switch to mimo-v2.5 or mimo-v2-omni for vision tasks.]`,
     });
+  }
+
+  // MiMo's image-understanding API REQUIRES at least one `text` part in the
+  // content array whenever `image_url` parts are present. Otherwise it 400s
+  // with "Param Incorrect: `text` is not set" (yes, even though OpenAI's
+  // chat API doesn't require this). Codex sometimes sends image-only user
+  // messages (paste-and-send), so we add an empty fallback to satisfy the
+  // schema. The image alone is usually enough context for the model.
+  const hasImage = out.some((p) => p.type === "image_url");
+  const hasText = out.some((p) => p.type === "text");
+  if (hasImage && !hasText) {
+    out.push({ type: "text", text: " " });
   }
 
   // If the message is purely text, collapse to a string for cleaner upstream payloads.
