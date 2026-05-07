@@ -24,6 +24,55 @@ Local proxy that lets the **latest OpenAI Codex CLI** and **Codex desktop app** 
 
 > The npm package isn't published yet — clone the repo and run locally.
 
+### 🚀 Fastest path: one-shot script
+
+The repo ships [`scripts/install.sh`](./scripts/install.sh) (Linux / macOS / Git Bash / WSL) and [`scripts/install.ps1`](./scripts/install.ps1) (Windows PowerShell) that:
+
+1. Verify git / Node.js ≥ 18 / npm — and tell you how to install each if missing
+2. Clone the repo on first run; on subsequent runs `git pull --ff-only`
+3. `npm install` → `npm run build` → `npm test`
+4. Print exactly what to do next
+
+**Linux / macOS / Git Bash / WSL:**
+
+```bash
+# Remote one-liner (replace with your actual raw URL)
+curl -fsSL https://github.com/7as0nch/mimo2codex/main/scripts/install.sh | bash
+
+# Or local: clone first, then run
+git clone https://github.com/your-org/mimo2codex.git
+cd mimo2codex
+./scripts/install.sh
+
+# Install + start the proxy in one go
+MIMO_API_KEY=sk-xxx ./scripts/install.sh --start
+```
+
+**Windows PowerShell:**
+
+```powershell
+# Remote one-liner
+irm https://github.com/7as0nch/mimo2codex/main/scripts/install.ps1 | iex
+
+# Or local
+git clone https://github.com/your-org/mimo2codex.git
+cd mimo2codex
+.\scripts\install.ps1
+
+# Install + start
+$env:MIMO_API_KEY = "sk-xxx"
+.\scripts\install.ps1 -Start
+```
+
+> If PowerShell complains "running scripts is disabled", run once:
+> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+
+The scripts are **idempotent** — rerun anytime to pull, rebuild, retest. Use this to upgrade.
+
+The manual prerequisites + step-by-step below are for people who want to control each step. Skip to [**Get a MiMo API key**](#get-a-mimo-api-key) if the script worked.
+
+---
+
 ### 0. Prerequisites
 
 | Tool | Required | Check |

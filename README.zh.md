@@ -64,6 +64,55 @@
 
 > 本节假设你**没有**通过 `npm install -g` 安装包，而是 git clone 仓库后在本地直接运行。这是当前推荐的方式。
 
+### 🚀 最快方式：一键脚本
+
+仓库自带 [`scripts/install.sh`](./scripts/install.sh)（Linux / macOS / Git Bash / WSL）和 [`scripts/install.ps1`](./scripts/install.ps1)（Windows PowerShell）。脚本会自动：
+
+1. 检测 git / Node.js ≥ 18 / npm，缺哪个就提示怎么装
+2. 拉仓库（首次执行），或在已存在的克隆里 `git pull --ff-only`
+3. `npm install` → `npm run build` → `npm test`
+4. 打印「下一步该做什么」的清单
+
+**Linux / macOS / Git Bash / WSL**：
+
+```bash
+# 远程一键（替换为实际 raw URL）
+curl -fsSL https://github.com/7as0nch/mimo2codex/main/scripts/install.sh | bash
+
+# 或本地：先 clone 再跑
+git clone https://github.com/your-org/mimo2codex.git
+cd mimo2codex
+./scripts/install.sh
+
+# 装完直接启动代理（需提前 export MIMO_API_KEY）
+MIMO_API_KEY=sk-xxx ./scripts/install.sh --start
+```
+
+**Windows PowerShell**：
+
+```powershell
+# 远程一键
+irm https://github.com/7as0nch/mimo2codex/main/scripts/install.ps1 | iex
+
+# 或本地：先 clone 再跑
+git clone https://github.com/your-org/mimo2codex.git
+cd mimo2codex
+.\scripts\install.ps1
+
+# 装完直接启动代理
+$env:MIMO_API_KEY = "sk-xxx"
+.\scripts\install.ps1 -Start
+```
+
+> 如果 PowerShell 报"running scripts is disabled"，先执行：
+> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+
+脚本是**幂等**的——重复执行只会拉新代码、重装依赖、重新构建，不会重置你的配置。要升级版本随时再跑一遍即可。
+
+下面的"先决条件 → 手动步骤"是给想自己控制每一步的人看的；不需要的话直接跳到 [**准备：拿一个 MiMo API Key**](#准备拿一个-mimo-api-key)。
+
+---
+
 ### 0. 先决条件
 
 | 软件 | 版本要求 | 检查命令 |

@@ -47,16 +47,66 @@ function messageItemToChat(item: ResponsesMessageItem): ChatMessage {
   return { role, content };
 }
 
-function toolToChat(t: ResponsesTool): ChatTool {
-  return {
-    type: "function",
-    function: {
-      name: t.name,
-      description: t.description,
-      parameters: t.parameters,
-      strict: t.strict ?? null,
+// Schema for Codex's `local_shell` builtin tool, mapped to a regular function
+// tool that MiMo (and any chat-completions-only provider) can understand.
+// Codex registers handlers for both `local_shell` (builtin) and `shell`
+// (function), so emitting `shell` tool_calls back to it just works.
+const LOCAL_SHELL_FN: ChatTool = {
+  type: "function",
+  function: {
+    name: "shell",
+    description:
+      "Execute a shell command on the local machine. Returns stdout, stderr and exit code.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Argv array, e.g. [\"ls\", \"-la\"]. The first element is the program; remaining elements are arguments.",
+        },
+        workdir: {
+          type: "string",
+          description: "Working directory to run the command in (optional).",
+        },
+        timeout_ms: {
+          type: "number",
+          description: "Timeout in milliseconds (optional, default 30000).",
+        },
+      },
+      required: ["command"],
     },
-  };
+    strict: null,
+  },
+};
+
+function toolToChat(t: ResponsesTool): ChatTool | null {
+  if (t.type === "function") {
+    const ft = t as { type: "function"; name?: string; description?: string; parameters?: Record<string, unknown>; strict?: boolean | null };
+    if (!ft.name) {
+      log.warn("dropping function tool with no name");
+      return null;
+    }
+    return {
+      type: "function",
+      function: {
+        name: ft.name,
+        description: ft.description,
+        parameters: ft.parameters,
+        strict: ft.strict ?? null,
+      },
+    };
+  }
+  if (t.type === "local_shell") {
+    return LOCAL_SHELL_FN;
+  }
+  // Unknown / unsupported builtin tool. MiMo's chat API only accepts function
+  // tools, so we drop these silently-with-a-warning rather than crashing.
+  log.warn(
+    `dropping unsupported tool type "${t.type}" — MiMo's chat completions API only accepts function tools`
+  );
+  return null;
 }
 
 function toolChoiceToChat(tc: ResponsesToolChoice | undefined): ChatToolChoice | undefined {
@@ -171,7 +221,10 @@ export function reqToChat(req: ResponsesRequest): ChatRequest {
   };
 
   if (req.tools && req.tools.length > 0) {
-    chat.tools = req.tools.map(toolToChat);
+    const mapped = req.tools
+      .map(toolToChat)
+      .filter((t): t is ChatTool => t !== null);
+    if (mapped.length > 0) chat.tools = mapped;
   }
   const tc = toolChoiceToChat(req.tool_choice);
   if (tc !== undefined) chat.tool_choice = tc;

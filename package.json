@@ -21,6 +21,7 @@
   "main": "dist/server.js",
   "files": [
     "dist",
+    "scripts",
     "README.md",
     "README.zh.md",
     "LICENSE"

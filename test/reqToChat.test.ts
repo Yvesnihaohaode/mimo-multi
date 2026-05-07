@@ -202,4 +202,58 @@ describe("reqToChat", () => {
     const req: ResponsesRequest = { model: "mimo-v2.5-pro", input: "x", stream: true };
     expect(reqToChat(req).stream).toBe(true);
   });
+
+  it("drops builtin tools without name (web_search_preview, etc.) — MiMo chat API can't use them", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "x",
+      // Codex / Responses-API may send these builtin tool shapes that have no `name`.
+      // Cast through unknown because our type system doesn't enforce builtin tool fields.
+      tools: [
+        { type: "web_search_preview" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+        { type: "code_interpreter" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+        { type: "function", name: "shell", parameters: { type: "object" } },
+      ] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req);
+    expect(chat.tools).toHaveLength(1);
+    expect(chat.tools![0].function.name).toBe("shell");
+  });
+
+  it("translates local_shell builtin into a function tool named 'shell'", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "list files",
+      tools: [{ type: "local_shell" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req);
+    expect(chat.tools).toHaveLength(1);
+    const fn = chat.tools![0].function;
+    expect(fn.name).toBe("shell");
+    expect(fn.parameters).toBeDefined();
+    expect((fn.parameters as { properties: Record<string, unknown> }).properties.command).toBeDefined();
+  });
+
+  it("drops function tool that has no name instead of forwarding name=undefined", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "x",
+      tools: [{ type: "function" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req);
+    expect(chat.tools).toBeUndefined(); // empty after filter, field omitted entirely
+  });
+
+  it("when ALL tools get filtered, the tools field is omitted entirely (not empty array)", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "x",
+      tools: [
+        { type: "web_search_preview" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+        { type: "image_generation" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+      ] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req);
+    expect(chat.tools).toBeUndefined();
+  });
 });

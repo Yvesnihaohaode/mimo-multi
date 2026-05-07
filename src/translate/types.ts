@@ -88,7 +88,18 @@ export interface ResponsesFunctionTool {
   strict?: boolean | null;
 }
 
-export type ResponsesTool = ResponsesFunctionTool;
+// Codex (and the Responses API in general) sends several builtin tool shapes
+// that don't follow the function-tool schema — `local_shell`, `web_search`,
+// `web_search_preview`, `code_interpreter`, `file_search`, `image_generation`,
+// `computer_use_preview`, etc. These have no `name` field. We accept them at
+// the request boundary and decide per-type whether to translate, drop, or
+// pass through in reqToChat.
+export interface ResponsesBuiltinTool {
+  type: string;
+  [key: string]: unknown;
+}
+
+export type ResponsesTool = ResponsesFunctionTool | ResponsesBuiltinTool;
 
 export type ResponsesToolChoice =
   | "auto"
