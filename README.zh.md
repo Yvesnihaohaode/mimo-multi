@@ -60,11 +60,44 @@
 
 ---
 
-## 安装与启动（本地源码运行）
+## 安装
 
-> 本节假设你**没有**通过 `npm install -g` 安装包，而是 git clone 仓库后在本地直接运行。这是当前推荐的方式。
+三选一，按你的偏好：
 
-### 🚀 最快方式：一键脚本
+### 🟢 方式 1：npm 全局安装（最简单，推荐普通用户）
+
+```bash
+npm install -g mimo2codex
+mimo2codex --version
+```
+
+需要 Node.js ≥ 18。装完之后 `mimo2codex` 就在 PATH 里了，所有命令直接用：
+
+```bash
+export MIMO_API_KEY=sk-xxxxxxxxxxxxxxxx
+mimo2codex                          # 启动代理
+mimo2codex print-config             # 打印 ~/.codex/config.toml 片段
+mimo2codex print-cc-switch          # 打印 cc-switch 配置片段
+mimo2codex --port 9000 --verbose    # 改端口 + 详细日志
+```
+
+**升级到新版本**：
+
+```bash
+npm update -g mimo2codex
+```
+
+**卸载**：
+
+```bash
+npm rm -g mimo2codex
+```
+
+下面方式 2 / 3 是给开发者或想看源码的人准备的——如果你只是用，方式 1 已经够了，直接跳到 [**准备：拿一个 MiMo API Key**](#准备拿一个-mimo-api-key)。
+
+---
+
+### 🛠 方式 2：本地源码 + 一键脚本（贡献者首选）
 
 仓库自带 [`scripts/install.sh`](./scripts/install.sh)（Linux / macOS / Git Bash / WSL）和 [`scripts/install.ps1`](./scripts/install.ps1)（Windows PowerShell）。脚本会自动：
 
@@ -109,11 +142,13 @@ $env:MIMO_API_KEY = "sk-xxx"
 
 脚本是**幂等**的——重复执行只会拉新代码、重装依赖、重新构建，不会重置你的配置。要升级版本随时再跑一遍即可。
 
-下面的"先决条件 → 手动步骤"是给想自己控制每一步的人看的；不需要的话直接跳到 [**准备：拿一个 MiMo API Key**](#准备拿一个-mimo-api-key)。
-
 ---
 
-### 0. 先决条件
+### 🔧 方式 3：手动一步步装（完全控制每一步）
+
+只在前两种方式都不合你心意时再看；普通用户跳到 [**准备：拿一个 MiMo API Key**](#准备拿一个-mimo-api-key) 即可。
+
+#### 0. 先决条件
 
 | 软件 | 版本要求 | 检查命令 |
 |---|---|---|
@@ -123,7 +158,7 @@ $env:MIMO_API_KEY = "sk-xxx"
 
 如果 `node -v` 报错或版本不到 18，去 [nodejs.org](https://nodejs.org) 装一个 LTS。Windows 用户也可以用 [nvs](https://github.com/jasongin/nvs) / [nvm-windows](https://github.com/coreybutler/nvm-windows) 管理多版本。
 
-### 1. 克隆仓库 & 装依赖
+#### 1. 克隆仓库 & 装依赖
 
 ```bash
 git clone https://github.com/your-org/mimo2codex.git
@@ -133,7 +168,7 @@ npm install
 
 `npm install` 会装大约 87 个包（typescript、vitest、tsx、nanoid、eventsource-parser），耗时 30 秒到 1 分钟。
 
-### 2. 选一种启动方式
+#### 2. 选一种启动方式
 
 下面三种任选其一。**A** 是最快上手的；**B** 启动最快、运行时占用最低；**C** 让 `mimo2codex` 像全局命令一样使用。
 
@@ -209,7 +244,7 @@ MIMO_API_KEY=sk-xxx mimo2codex
 
 > 💡 后文所有的 `mimo2codex ...` 命令示例，对应到方式 A 是 `npm run dev -- ...`、方式 B 是 `node dist/cli.js ...`、方式 C 是 `mimo2codex ...` 直接用。
 
-### 3. 跑测试（可选）
+#### 3. 跑测试（可选）
 
 确认你这台机器上一切正常：
 
@@ -228,7 +263,7 @@ npm test
       Tests  25 passed (25)
 ```
 
-### 4. 让代理常驻后台
+#### 4. 让代理常驻后台
 
 mimo2codex 是个长时运行的服务，开发时直接前台跑就行；如果想常驻：
 
@@ -283,7 +318,7 @@ pm2 startup    # 跟着提示开机自启
 4. 完成后右键任务 → 属性 → 设置「使用最高权限运行」可选；在「条件」/「设置」里关掉空闲限制
 5. 在「环境变量」里把 `MIMO_API_KEY` 设上（或在系统属性 → 环境变量里全局设）
 
-### 5. 升级到新版本
+#### 5. 升级到新版本
 
 ```bash
 cd mimo2codex

@@ -8,3 +8,13 @@ coverage/
 .vscode/
 .idea/
 *.tsbuildinfo
+
+# Python (mimoskill helper scripts) — bytecode caches, virtual envs
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# npm pack output (don't commit tarballs)
+*.tgz

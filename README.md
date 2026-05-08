@@ -20,11 +20,34 @@ Local proxy that lets the **latest OpenAI Codex CLI** and **Codex desktop app** 
 - ✅ 1M context — pass `mimo-v2.5-pro[1m]` as the model
 - ✅ **cc-switch integration** — `mimo2codex print-cc-switch` outputs the auth.json + config.toml snippets you paste into cc-switch's "Add Provider → Codex → Custom" dialog
 
-## Run from source (recommended)
+## Install
 
-> The npm package isn't published yet — clone the repo and run locally.
+Pick one:
 
-### 🚀 Fastest path: one-shot script
+### 🟢 Option 1: npm (recommended for most users)
+
+```bash
+npm install -g mimo2codex
+mimo2codex --version
+```
+
+Requires Node.js ≥ 18. After install, `mimo2codex` is on your PATH:
+
+```bash
+export MIMO_API_KEY=sk-xxxxxxxxxxxxxxxx
+mimo2codex                          # start the proxy
+mimo2codex print-config             # print the ~/.codex/config.toml snippet
+mimo2codex print-cc-switch          # print the cc-switch config snippet
+mimo2codex --port 9000 --verbose
+```
+
+Upgrade later: `npm update -g mimo2codex`. Remove: `npm rm -g mimo2codex`.
+
+If you only want to use it, Options 2 and 3 below are not needed — skip to [Get a MiMo API key](#get-a-mimo-api-key).
+
+---
+
+### 🛠 Option 2: clone + one-shot script (for contributors)
 
 The repo ships [`scripts/install.sh`](./scripts/install.sh) (Linux / macOS / Git Bash / WSL) and [`scripts/install.ps1`](./scripts/install.ps1) (Windows PowerShell) that:
 
@@ -69,11 +92,13 @@ $env:MIMO_API_KEY = "sk-xxx"
 
 The scripts are **idempotent** — rerun anytime to pull, rebuild, retest. Use this to upgrade.
 
-The manual prerequisites + step-by-step below are for people who want to control each step. Skip to [**Get a MiMo API key**](#get-a-mimo-api-key) if the script worked.
-
 ---
 
-### 0. Prerequisites
+### 🔧 Option 3: manual setup (full control over each step)
+
+Skip this section if Option 1 or 2 worked — it's only here for people who want to do each step by hand.
+
+#### 0. Prerequisites
 
 | Tool | Required | Check |
 |---|---|---|
@@ -83,7 +108,7 @@ The manual prerequisites + step-by-step below are for people who want to control
 
 If `node -v` is missing or below 18, grab an LTS from [nodejs.org](https://nodejs.org). Windows users can also use [nvs](https://github.com/jasongin/nvs) or [nvm-windows](https://github.com/coreybutler/nvm-windows).
 
-### 1. Clone & install dependencies
+#### 1. Clone & install dependencies
 
 ```bash
 git clone https://github.com/your-org/mimo2codex.git
@@ -93,7 +118,7 @@ npm install
 
 Installs ~87 packages (typescript, vitest, tsx, nanoid, eventsource-parser); takes 30–60s.
 
-### 2. Pick a run mode
+#### 2. Pick a run mode
 
 #### Mode A — dev mode (no build, fastest to try)
 
@@ -153,7 +178,7 @@ To undo: `npm unlink` in the repo, or `npm rm -g mimo2codex` globally.
 
 > Throughout the rest of this README, `mimo2codex …` means whichever invocation matches your mode: `npm run dev -- …` (A), `node dist/cli.js …` (B), or `mimo2codex …` (C).
 
-### 3. Run the tests (optional)
+#### 3. Run the tests (optional)
 
 ```bash
 npm test
@@ -161,7 +186,7 @@ npm test
 
 Expect 25 passing across 3 files.
 
-### 4. Keep the proxy running in the background
+#### 4. Keep the proxy running in the background
 
 #### macOS / Linux — systemd user unit
 
@@ -208,7 +233,7 @@ pm2 save && pm2 startup
    - Start in: `D:\path\to\mimo2codex`
 4. Set `MIMO_API_KEY` in the task's environment, or globally in System Properties → Environment Variables
 
-### 5. Updating
+#### 5. Updating
 
 ```bash
 cd mimo2codex
