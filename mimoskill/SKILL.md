@@ -72,29 +72,43 @@ For non-trivial integrations, [references/models.md](references/models.md) and [
 
 **Why this needs special handling**: Codex's built-in `/hatch` pet generation requires OpenAI's image generation API (`gpt-image-1`). MiMo doesn't have an image generation endpoint, and mimo2codex can't fake one. So `/hatch` from inside Codex won't work when Codex is pointed at MiMo.
 
-**The workaround**: generate the pet image *outside* of Codex (using a real OpenAI key, or a free alternative), then drop the result into Codex's pet directory and restart Codex.
+**The workaround**: generate the pet image *outside* of Codex, then drop the result into Codex's pet directory and restart Codex. The script supports several image-gen backends:
 
-### Quickstart
+- **`auto` (default)** — picks `gpt-image-1` if you have an OpenAI key set, otherwise falls back to **pollinations.ai** (free, no key, no signup). **Works with only a MiMo key.**
+- **`pollinations`** — free, no key required
+- **`gpt-image-1`** — best quality, needs a real OpenAI key (separate from `MIMO_API_KEY`)
+- **`replicate`** — FLUX/SDXL, ~$0.003/img, needs `REPLICATE_API_TOKEN`
+- **`local-sd`** — Automatic1111/ComfyUI on `127.0.0.1:7860`, free, needs local setup
+
+### Quickstart (only MiMo key required)
 
 ```bash
-# 1. Install the openai SDK (one-time, requires network access)
-python3 -m pip install --user openai pillow
+# 1. No OpenAI key, no pip install — just run with the free fallback
+python3 mimoskill/scripts/generate_pet.py \
+    --description "a chubby cyberpunk axolotl coding hero" \
+    --out ~/Downloads/my-pet.png
 
-# 2. Set a real OpenAI API key (NOT the placeholder mimo2codex-local).
-#    This is separate from MIMO_API_KEY and only used for image gen.
-export PET_OPENAI_API_KEY=sk-real-openai-key
+# 2. Install into Codex's pet folder
+bash mimoskill/scripts/install_pet.sh ~/Downloads/my-pet.png "axolotl-coder"
 
-# 3. Generate the pet
+# 3. Restart Codex completely and select the new pet from the pet menu
+```
+
+`generate_pet.py` will print `[provider] auto → pollinations` so you know the free path is in use.
+
+### Optional: better quality with an OpenAI key
+
+If you do want gpt-image-1 quality (and image-to-image edit via `--reference`):
+
+```bash
+export PET_OPENAI_API_KEY=sk-real-openai-key  # NOT mimo2codex-local
 python3 mimoskill/scripts/generate_pet.py \
     --reference path/to/source-image.jpg \
     --description "a chubby cyberpunk axolotl coding hero" \
     --out ~/Downloads/my-pet.png
-
-# 4. Install into Codex's pet folder
-bash mimoskill/scripts/install_pet.sh ~/Downloads/my-pet.png "axolotl-coder"
-
-# 5. Restart Codex completely and select the new pet from the pet menu
 ```
+
+`auto` will pick gpt-image-1 automatically when this env var is set. This OpenAI key is **only** used for the image generation call — your chat conversations still go through MiMo via mimo2codex.
 
 ### Step-by-step walkthrough + prompt design
 

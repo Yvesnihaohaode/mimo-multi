@@ -9,21 +9,31 @@ using your choice of provider, then `install_pet.sh` drops it into Codex's
 pet directory.
 
 Providers:
-  gpt-image-1 (default) — best quality, needs PET_OPENAI_API_KEY (real OpenAI key).
-  pollinations          — free, no key, lower quality.
+  auto (default)        — gpt-image-1 if PET_OPENAI_API_KEY/OPENAI_API_KEY is set,
+                          otherwise falls back to pollinations (free, no key).
+                          Pick this if you only have a MiMo key and want pet
+                          generation to "just work".
+  pollinations          — free, no key. Decent quality for chibi-sticker style.
+  gpt-image-1           — best quality, needs PET_OPENAI_API_KEY (real OpenAI key,
+                          NOT the mimo2codex-local placeholder). Image-to-image
+                          edit (--reference) only works with this provider.
   replicate             — FLUX/SDXL, needs REPLICATE_API_TOKEN. Cheap (~$0.003/img).
   local-sd              — local Automatic1111 / ComfyUI on http://127.0.0.1:7860, free.
 
 Usage:
-    # default (gpt-image-1)
-    export PET_OPENAI_API_KEY=sk-real-openai-key
-    python3 generate_pet.py --reference src.jpg --description "chibi axolotl" --out pet.png
+    # auto mode — works with ONLY a MiMo key (no OpenAI key needed)
+    python3 generate_pet.py --description "chibi axolotl" --out pet.png
 
-    # free fallback
+    # explicit free path
     python3 generate_pet.py --provider pollinations --description "..." --out pet.png
 
+    # best quality (needs OpenAI key, separate from MIMO_API_KEY)
+    export PET_OPENAI_API_KEY=sk-real-openai-key
+    python3 generate_pet.py --provider gpt-image-1 \\
+        --reference src.jpg --description "chibi axolotl" --out pet.png
+
     # bundle of three states (idle / working / done)
-    python3 generate_pet.py --reference src.jpg --description "chibi axolotl" --bundle ./my-pet/
+    python3 generate_pet.py --description "chibi axolotl" --bundle ./my-pet/
 """
 from __future__ import annotations
 
@@ -245,6 +255,16 @@ PROVIDERS = {
     "local-sd": gen_local_sd,
 }
 
+
+def resolve_auto_provider() -> str:
+    """Pick the best provider that's actually usable in the current env."""
+    if os.environ.get("PET_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY"):
+        return "gpt-image-1"
+    if os.environ.get("REPLICATE_API_TOKEN"):
+        return "replicate"
+    # Pollinations needs nothing — guaranteed fallback.
+    return "pollinations"
+
 # --- cli --------------------------------------------------------------------
 
 def generate_one(
@@ -269,7 +289,14 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument("--description", required=True, help="what the pet looks/acts like")
     p.add_argument("--reference", type=Path, help="reference image (gpt-image-1 only)")
-    p.add_argument("--provider", choices=list(PROVIDERS), default="gpt-image-1")
+    p.add_argument(
+        "--provider",
+        choices=["auto"] + list(PROVIDERS),
+        default="auto",
+        help="image gen backend. 'auto' picks gpt-image-1 if you have an OpenAI "
+        "key, else falls back to pollinations (free, no key). With only a MiMo "
+        "key, 'auto' will use pollinations.",
+    )
     p.add_argument("--quality", default="medium", choices=["low", "medium", "high", "hd"])
     p.add_argument("--out", type=Path, help="single-image output path (PNG)")
     p.add_argument(
@@ -285,6 +312,20 @@ def main() -> None:
     if args.out and args.bundle:
         sys.stderr.write("error: --out and --bundle are mutually exclusive\n")
         sys.exit(2)
+
+    # Resolve --provider auto → concrete provider, with a status line so the
+    # user knows what they're getting.
+    if args.provider == "auto":
+        chosen = resolve_auto_provider()
+        if chosen == "pollinations":
+            sys.stderr.write(
+                "[provider] auto → pollinations (free, no key required).\n"
+                "           For higher quality, set PET_OPENAI_API_KEY (real OpenAI key)\n"
+                "           and rerun, or pass --provider replicate / local-sd.\n\n"
+            )
+        else:
+            sys.stderr.write(f"[provider] auto → {chosen}\n\n")
+        args.provider = chosen
 
     if args.bundle:
         states = {

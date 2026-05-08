@@ -7,11 +7,24 @@ isn't a real OpenAI key.
 
 This doc shows you how to generate the pet **outside** of Codex and drop it in.
 
-## TL;DR
+## TL;DR (only MiMo key required)
 
 ```bash
-python3 -m pip install --user openai pillow
+# No OpenAI key, no pip install — defaults to free Pollinations
+python3 mimoskill/scripts/generate_pet.py \
+    --description "chibi cyberpunk axolotl with a laptop" \
+    --out ~/Downloads/my-pet.png
 
+bash mimoskill/scripts/install_pet.sh ~/Downloads/my-pet.png "axolotl-coder"
+# fully quit and relaunch Codex; pick the new pet from the picker
+```
+
+The script prints `[provider] auto → pollinations` to confirm the free path
+is in use. For better quality, see "Image gen alternatives" below.
+
+## TL;DR (with OpenAI key for higher quality)
+
+```bash
 export PET_OPENAI_API_KEY=sk-real-openai-key   # NOT mimo2codex-local
 python3 mimoskill/scripts/generate_pet.py \
     --reference path/to/source.jpg \
@@ -19,8 +32,9 @@ python3 mimoskill/scripts/generate_pet.py \
     --out ~/Downloads/my-pet.png
 
 bash mimoskill/scripts/install_pet.sh ~/Downloads/my-pet.png "axolotl-coder"
-# fully quit and relaunch Codex; pick the new pet from the picker
 ```
+
+`--reference` (image-to-image edit) only works with `gpt-image-1`.
 
 ## Pet folder location
 
