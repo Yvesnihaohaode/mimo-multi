@@ -2,749 +2,249 @@
 
 > [English](./README.md) · 中文
 
-让**最新版** OpenAI Codex CLI / Codex 桌面端无缝接入**小米 MiMo V2.5 Pro** 的本地代理。它把 Codex 的 Responses API 实时翻译成 MiMo 的 Chat Completions API，纯本地无状态转换。
+让**最新版** OpenAI Codex CLI / Codex 桌面端无缝接入**小米 MiMo V2.5** 的本地代理。把 Codex 的 Responses API 实时翻译成 MiMo 的 Chat Completions API，纯本地无状态。
 
-可独立使用，也可作为自定义供应商配置进 [cc-switch](https://github.com/farion1231/cc-switch)，与 OpenAI 官方、Azure、AiHubMix 等其他 Codex 供应商**一键切换**。
+![mimo2codex 安装与启动](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B.jpg)
 
----
+## 解决什么问题
 
-## 这个工具解决什么问题
+小米米莫官方 [Codex 集成文档](https://platform.xiaomimimo.com/docs/zh-CN/integration/codex) 只支持 `wire_api = "chat"`，而最新版 Codex 已经把这个开关变成硬错误。官方建议是降级 Codex 到 0.80.0——但会丢掉 pet 宠物、桌面端新功能、新工具。mimo2codex 在中间挂个本地代理，**Codex 用最新版、MiMo 服务端不变**，两边都不用改。
 
-小米米莫官方的 [Codex 集成文档](https://platform.xiaomimimo.com/docs/zh-CN/integration/codex) 明确写着：
+类似 [openrouter](https://openrouter.ai)、[claude-code-router](https://github.com/musistudio/claude-code-router)、[y-router](https://github.com/luohy15/y-router)——纯协议网关。
 
-> "MiMo Models are not yet compatible with the Responses API and are only supported by older versions of Codex that use the ChatCompletions API."
->
-> "Newer versions of Codex no longer support `wire_api = "chat"`. If you encounter the error `wire_api = chat is no longer supported`, please downgrade the Codex version."
+## 支持
 
-也就是说：
+- ✅ Codex CLI 0.x（`wire_api = "responses"`）+ 桌面端
+- ✅ 工具调用——function tools、并行调用、`local_shell`、`custom`、MCP `namespace`
+- ✅ 联网搜索——翻译成 MiMo 原生 `web_search` builtin（需在控制台激活 Web Search Plugin）
+- ✅ 视觉——`mimo-v2.5` / `mimo-v2-omni` 走视觉路径；pro/flash 自动剥图 + 占位文本
+- ✅ 1M 长上下文——传 `mimo-v2.5-pro[1m]`
+- ✅ 思维链透传（`--no-reasoning` 隐藏）
+- ✅ cc-switch 集成（`mimo2codex print-cc-switch` 输出粘贴片段）
+- ⚠️ **`/hatch` 自定义宠物生成**——纯 MiMo 做不到。Codex 的 `/hatch` 在客户端硬编码调 OpenAI 的 `image_gen` 工具，这步代理拦不住；MiMo 自己又没有图像生成 endpoint。绕路方案走 `mimoskill/`（免费，不要 OpenAI key），见下文。
 
-- MiMo 服务端**只暴露 Chat Completions 协议**
-- OpenAI 已弃用 Codex 的 `wire_api = "chat"`（2026 年 2 月起为硬错误）
-- 官方建议的解决方案是**降级 Codex 到 0.80.0**——但这样就丢掉了 pet 宠物、桌面端新功能、新工具支持等改进
-- cc-switch 的 Codex 预设里也没有 MiMo（只有 OpenAI 官方、Azure、AiHubMix、DMXAPI、PackyCode、OpenRouter 等）——同样因为 MiMo 不支持 Responses API
+## 安装——任选一种
 
-**mimo2codex 把这两边都救活了**：本地起个 HTTP 服务，对外伪装成 OpenAI Responses API 后端，对内翻译成 MiMo Chat Completions。Codex 用最新版、MiMo 服务端不变、cc-switch 把它当一个普通自定义供应商管理。
-
-工作原理类似 [openrouter](https://openrouter.ai)、[claude-code-router](https://github.com/musistudio/claude-code-router)、[y-router](https://github.com/luohy15/y-router)——纯协议网关，不缓存、不调度、不存储。
-
-## 支持的能力
-
-- ✅ Codex CLI 0.x 最新版（`wire_api = "responses"`）
-- ✅ Codex 桌面端（macOS / Windows）
-- ✅ **Pet 宠物**（状态由 SSE 事件生命周期驱动，无需特殊处理）
-- ✅ **工具调用**——function tools，含并行调用
-- ✅ 多轮对话 + 混合工具调用 + reasoning
-- ✅ 流式 SSE，完整 Responses 事件序列（`response.created` / `output_item.added` / `output_text.delta` / `function_call_arguments.delta` / `reasoning_summary_text.delta` / `completed` 等）
-- ✅ **思维链透传**——MiMo 的 `reasoning_content` 在 Codex 终端显示为思考摘要，多轮工具调用时按 MiMo 官方推荐回填给上游
-- ✅ **1M 长上下文**——把 model 写成 `mimo-v2.5-pro[1m]` 即可
-- ✅ **可配进 cc-switch**——与 OpenAI 官方等其他供应商一键切换
-
-## 工作原理
-
-```
-┌──────────────┐  POST /v1/responses     ┌──────────────┐  POST /v1/chat/completions  ┌──────────────┐
-│ Codex CLI /  │  (wire_api="responses") │  mimo2codex  │  (chat completions, SSE)    │  Xiaomimimo  │
-│ Codex 桌面端 │ ──────────────────────► │  127.0.0.1   │ ──────────────────────────► │  MiMo V2.5   │
-└──────────────┘ ◄────────────────────── │   :8788      │ ◄────────────────────────── └──────────────┘
-                  Responses SSE 事件流   └──────────────┘   Chat Completions SSE
-```
-
-每个请求的处理：
-
-1. Codex POST 一个 Responses 请求体（`input` 是 message / function_call / function_call_output / reasoning items 数组）
-2. mimo2codex 把 `input` 翻译成 Chat `messages`，并把连续的 `reasoning` + `function_call` 折叠成一条带 `reasoning_content` + `tool_calls` 的 assistant 消息（这是 MiMo 推荐的多轮高质量做法）
-3. mimo2codex 用你的 `MIMO_API_KEY` 调 MiMo 的 `/v1/chat/completions`
-4. 流式读 Chat SSE 块，状态机改写成 Responses SSE 事件流回 Codex
-
-整个代理**完全无状态**——不存 `previous_response_id`、不缓存、不校验入站 key。想跑几个实例都行。
-
----
-
-## 安装
-
-三选一，按你的偏好：
-
-### 🟢 方式 1：npm 全局安装（最简单，推荐普通用户）
+### 🟢 npm（最常用）
 
 ```bash
 npm install -g mimo2codex
-mimo2codex --version
 ```
 
-需要 Node.js ≥ 18。装完之后 `mimo2codex` 就在 PATH 里了，所有命令直接用：
+### 🟡 一键脚本（不需要全局安装）
 
 ```bash
-export MIMO_API_KEY=sk-xxxxxxxxxxxxxxxx
-mimo2codex                          # 启动代理
-mimo2codex print-config             # 打印 ~/.codex/config.toml 片段
-mimo2codex print-cc-switch          # 打印 cc-switch 配置片段
-mimo2codex --port 9000 --verbose    # 改端口 + 详细日志
-```
-
-**升级到新版本**：
-
-```bash
-npm update -g mimo2codex
-```
-
-**卸载**：
-
-```bash
-npm rm -g mimo2codex
-```
-
-下面方式 2 / 3 是给开发者或想看源码的人准备的——如果你只是用，方式 1 已经够了，直接跳到 [**准备：拿一个 MiMo API Key**](#准备拿一个-mimo-api-key)。
-
----
-
-### 🛠 方式 2：本地源码 + 一键脚本（贡献者首选）
-
-仓库自带 [`scripts/install.sh`](./scripts/install.sh)（Linux / macOS / Git Bash / WSL）和 [`scripts/install.ps1`](./scripts/install.ps1)（Windows PowerShell）。脚本会自动：
-
-1. 检测 git / Node.js ≥ 18 / npm，缺哪个就提示怎么装
-2. 拉仓库（首次执行），或在已存在的克隆里 `git pull --ff-only`
-3. `npm install` → `npm run build` → `npm test`
-4. 打印「下一步该做什么」的清单
-
-**Linux / macOS / Git Bash / WSL**：
-
-```bash
-# 远程一键（替换为实际 raw URL）
 curl -fsSL https://raw.githubusercontent.com/7as0nch/mimo2codex/main/scripts/install.sh | bash
-
-# 或本地：先 clone 再跑
-git clone https://github.com/your-org/mimo2codex.git
-cd mimo2codex
-./scripts/install.sh
-
-# 装完直接启动代理（需提前 export MIMO_API_KEY）
-MIMO_API_KEY=sk-xxx ./scripts/install.sh --start
 ```
 
-**Windows PowerShell**：
+Windows PowerShell：
 
 ```powershell
-# 远程一键
 irm https://raw.githubusercontent.com/7as0nch/mimo2codex/main/scripts/install.ps1 | iex
-
-# 或本地：先 clone 再跑
-git clone https://github.com/your-org/mimo2codex.git
-cd mimo2codex
-.\scripts\install.ps1
-
-# 装完直接启动代理
-$env:MIMO_API_KEY = "sk-xxx"
-.\scripts\install.ps1 -Start
 ```
 
-> 如果 PowerShell 报"running scripts is disabled"，先执行：
-> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+### 其他方式
 
-脚本是**幂等**的——重复执行只会拉新代码、重装依赖、重新构建，不会重置你的配置。要升级版本随时再跑一遍即可。
+- **git clone 手动构建**：`git clone https://github.com/7as0nch/mimo2codex && cd mimo2codex && npm install && npm run build`，想看源码 / 改代码用这个
+- **`npm link`**：clone 完之后 `npm run build && npm link`，把本地仓库注册成全局命令，不用 publish
 
----
+要求 Node.js ≥ 18。
 
-### 🔧 方式 3：手动一步步装（完全控制每一步）
+## 使用
 
-只在前两种方式都不合你心意时再看；普通用户跳到 [**准备：拿一个 MiMo API Key**](#准备拿一个-mimo-api-key) 即可。
+### 1. 拿一个 MiMo API Key
 
-#### 0. 先决条件
+去 [platform.xiaomimimo.com](https://platform.xiaomimimo.com) → 控制台 → API Keys 创建。`sk-` 开头是按量付费，`tp-` 开头是 Token 套餐。
 
-| 软件 | 版本要求 | 检查命令 |
-|---|---|---|
-| Node.js | **≥ 18.0** | `node -v` |
-| npm | 与 Node 同包 | `npm -v` |
-| git | 任意版本 | `git --version` |
-
-如果 `node -v` 报错或版本不到 18，去 [nodejs.org](https://nodejs.org) 装一个 LTS。Windows 用户也可以用 [nvs](https://github.com/jasongin/nvs) / [nvm-windows](https://github.com/coreybutler/nvm-windows) 管理多版本。
-
-#### 1. 克隆仓库 & 装依赖
+### 2. 启动代理
 
 ```bash
-git clone https://github.com/your-org/mimo2codex.git
-cd mimo2codex
-npm install
-```
-
-`npm install` 会装大约 87 个包（typescript、vitest、tsx、nanoid、eventsource-parser），耗时 30 秒到 1 分钟。
-
-#### 2. 选一种启动方式
-
-下面三种任选其一。**A** 是最快上手的；**B** 启动最快、运行时占用最低；**C** 让 `mimo2codex` 像全局命令一样使用。
-
-#### 方式 A：开发模式（推荐首次试用）
-
-直接用 `tsx` 跑 TypeScript 源码，**不需要构建**：
-
-```bash
-# Linux / macOS / Git Bash
 export MIMO_API_KEY=sk-xxxxxxxxxxxxxxxx
-npm run dev
-
-# Windows PowerShell
-$env:MIMO_API_KEY="sk-xxxxxxxxxxxxxxxx"
-npm run dev
-
-# Windows CMD
-set MIMO_API_KEY=sk-xxxxxxxxxxxxxxxx
-npm run dev
+mimo2codex
 ```
 
-要带额外参数（例如改端口）：
+启动横幅会直接打印好该贴到 `~/.codex/` 的 `auth.json` 和 `config.toml` 内容。默认走 auth.json 方式——CLI 和桌面端都能用，不依赖任何环境变量。
 
-```bash
-npm run dev -- --port 9000
-npm run dev -- --base-url https://token-plan-cn.xiaomimimo.com/v1
-npm run dev -- print-cc-switch
-```
+### 3. 配置 Codex
 
-> ⚠️ 注意 `--` 分隔符：`--` 前面是给 npm 的参数，后面才是给 mimo2codex 的。
-
-#### 方式 B：构建后跑（推荐长期使用）
-
-把 TypeScript 编译成 JavaScript，再用纯 Node 跑——启动快（< 100ms）、内存占用低、没有 tsx 的额外开销：
-
-```bash
-# 一次性构建
-npm run build
-
-# 启动（任选其一）
-npm start
-node dist/cli.js
-```
-
-带参数：
-
-```bash
-npm start -- --port 9000
-node dist/cli.js --port 9000
-node dist/cli.js print-cc-switch
-```
-
-构建产物在 `dist/`（已在 `.gitignore` 里，不会污染仓库）。改了源码记得重新 `npm run build`。
-
-#### 方式 C：把 `mimo2codex` 注册为全局命令（不需要 publish）
-
-在仓库根目录跑一次：
-
-```bash
-npm run build      # 先确保 dist/ 已生成
-npm link           # 把当前目录注册为全局 mimo2codex
-```
-
-之后在**任何目录**都能直接用：
-
-```bash
-mimo2codex --version
-mimo2codex print-cc-switch
-MIMO_API_KEY=sk-xxx mimo2codex
-```
-
-要解除链接：在仓库根目录跑 `npm unlink`，或全局 `npm rm -g mimo2codex`。
-
-> 💡 后文所有的 `mimo2codex ...` 命令示例，对应到方式 A 是 `npm run dev -- ...`、方式 B 是 `node dist/cli.js ...`、方式 C 是 `mimo2codex ...` 直接用。
-
-#### 3. 跑测试（可选）
-
-确认你这台机器上一切正常：
-
-```bash
-npm test
-```
-
-预期 25 个用例全过：
-
-```
- ✓ test/respToResponses.test.ts (6 tests)
- ✓ test/reqToChat.test.ts (11 tests)
- ✓ test/streamToSse.test.ts (8 tests)
-
- Test Files  3 passed (3)
-      Tests  25 passed (25)
-```
-
-#### 4. 让代理常驻后台
-
-mimo2codex 是个长时运行的服务，开发时直接前台跑就行；如果想常驻：
-
-#### macOS / Linux：systemd 用户单元（推荐）
-
-新建 `~/.config/systemd/user/mimo2codex.service`：
-
-```ini
-[Unit]
-Description=mimo2codex — Codex Responses → Xiaomi MiMo proxy
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/绝对路径/到/mimo2codex
-Environment="MIMO_API_KEY=sk-xxxxxxxxxxxxxxxx"
-ExecStart=/usr/bin/node dist/cli.js
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-```
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now mimo2codex
-systemctl --user status mimo2codex     # 看状态
-journalctl --user -u mimo2codex -f      # 看日志
-```
-
-#### 跨平台：[pm2](https://pm2.keymetrics.io)
-
-```bash
-npm install -g pm2
-cd mimo2codex
-npm run build
-MIMO_API_KEY=sk-xxx pm2 start dist/cli.js --name mimo2codex
-pm2 save
-pm2 startup    # 跟着提示开机自启
-```
-
-#### Windows：[node-windows](https://github.com/coreybutler/node-windows) 或任务计划程序
-
-最省事的方法是**任务计划程序**：
-
-1. 控制面板 → 任务计划程序 → 创建基本任务
-2. 触发器：登录时
-3. 操作：启动程序
-   - 程序：`C:\Program Files\nodejs\node.exe`
-   - 参数：`D:\workspace\goproject\my\mimo2codex\dist\cli.js`
-   - 起始位置：`D:\workspace\goproject\my\mimo2codex`
-4. 完成后右键任务 → 属性 → 设置「使用最高权限运行」可选；在「条件」/「设置」里关掉空闲限制
-5. 在「环境变量」里把 `MIMO_API_KEY` 设上（或在系统属性 → 环境变量里全局设）
-
-#### 5. 升级到新版本
-
-```bash
-cd mimo2codex
-git pull
-npm install            # 拉了新依赖才需要
-npm run build          # 方式 B/C 必跑；方式 A 不用
-# 重启你的常驻进程（systemctl restart / pm2 restart 等）
-```
-
----
-
-## 准备：拿一个 MiMo API Key
-
-去 [platform.xiaomimimo.com](https://platform.xiaomimimo.com) 注册（用小米账号），在「控制台 → API Keys」里创建一个 Key。
-
-- **按量付费**：`sk-xxx` 开头，BASE_URL 用 `https://api.xiaomimimo.com/v1`
-- **Token 套餐**：`tp-xxx` 开头，BASE_URL 用订阅页面给出的专属 URL（一般是 `https://token-plan-cn.xiaomimimo.com/v1`）
-
----
-
-## 使用方式
-
-下面三种用法任选其一。**A** 是最简单的；**B** 适合已经在用 cc-switch 管理多家供应商的；**C** 是把 mimo2codex 与其他 Codex 供应商混合使用、随时切换。
-
-### A. 独立使用（手动配 Codex）
-
-#### 1. 启动代理
-
-```bash
-# 任选你前面装好的方式。这里用方式 A：
-export MIMO_API_KEY=sk-xxxxxxxxxxxxxxxx
-npm run dev
-```
-
-启动后会打印 Codex 需要的配置片段（默认 **auth.json 方式**——CLI 和桌面端都能用、不依赖任何环境变量）：
-
-```
-mimo2codex v0.1.0 listening on http://127.0.0.1:8788
-upstream:    https://api.xiaomimimo.com/v1
-api key:     sk-x…xxxx
-reasoning:   passthrough
-
-# Step 1 — 写 ~/.codex/auth.json (Windows: %USERPROFILE%\.codex\auth.json)
-{
-  "OPENAI_API_KEY": "mimo2codex-local"
-}
-
-# Step 2 — 追加到 ~/.codex/config.toml
-model = "mimo-v2.5-pro"
-model_provider = "mimo"
-
-[model_providers.mimo]
-name = "MiMo (via mimo2codex)"
-base_url = "http://127.0.0.1:8788/v1"
-wire_api = "responses"
-requires_openai_auth = true
-request_max_retries = 1
-```
-
-#### 2. 写两个文件
-
-按上面的 Step 1 / Step 2 把两段内容分别写到对应文件：
+把启动横幅打的两段内容写到对应文件：
 
 | 文件 | macOS / Linux | Windows |
 |---|---|---|
 | auth.json | `~/.codex/auth.json` | `%USERPROFILE%\.codex\auth.json` |
 | config.toml | `~/.codex/config.toml` | `%USERPROFILE%\.codex\config.toml` |
 
-> ⚠️ **注意**：如果你也在用 OpenAI 官方账号登录 Codex，写 auth.json 会把官方登录覆盖掉。这种情况建议改用 [cc-switch 方式](#b-通过-cc-switch-添加自定义供应商)，它会自动备份和切换。
-
-`mimo2codex-local` 这个值是占位字符串，随便填非空都行——代理本身不校验。
-
-#### 3. 重启 Codex（桌面端必须做）
-
-如果你在用 **Codex 桌面端**：从托盘 / 任务栏完全退出（不只是关窗口），再重新启动。否则 Codex 不会重读新写的 auth.json。
-
-如果你在用 **Codex CLI**：直接启动就行：
+### 4. 跑 Codex
 
 ```bash
 codex
-> 帮我写一个 Python 计算斐波那契的函数并保存到 fib.py
+> 写一个 Python 计算斐波那契并保存到 fib.py
 ```
 
-Pet、工具调用、思考摘要、多轮对话都能正常工作。
+宠物、工具调用、思考过程、多轮对话都正常。`--no-reasoning` 可以不在终端显示思考。
 
-> 💡 **想用环境变量方式的（不动 auth.json）**：跑 `npm run dev -- print-config --env-key` 拿环境变量版的 snippet。但**仅 CLI 适用**，桌面端从 Finder / 开始菜单启动**不会**读到 shell 的 env vars。
+> 桌面端如果没读到新 `auth.json`，**完全退出后重启**（托盘 → 退出，不只是关窗口）。
 
----
+## 配合 cc-switch 使用
 
-### B. 通过 cc-switch 添加自定义供应商
+[cc-switch](https://github.com/farion1231/cc-switch) 是个跨平台桌面 App，专门管理 Claude Code / Codex / OpenCode / OpenClaw / Gemini CLI 的多供应商切换。它的 Codex 预设里没 MiMo（因为 MiMo 不支持 Responses API），mimo2codex 当桥用「自定义供应商」加进去：
 
-[cc-switch](https://github.com/farion1231/cc-switch) 是一个跨平台桌面 App，专门管理 Claude Code / Codex / OpenCode / OpenClaw / Gemini CLI 五个工具的多供应商切换。它的 Codex 预设里**没有 MiMo**（因为 MiMo 不支持 Responses API），所以我们用 mimo2codex 当桥，再以「自定义供应商」的方式加进 cc-switch。
+1. 让 mimo2codex 一直跑（`MIMO_API_KEY=... mimo2codex`）
+2. `mimo2codex print-cc-switch` 输出 `auth.json` + `config.toml` 两段文本
+3. cc-switch GUI → **Codex** Tab → **+** → **自定义** → 把两段贴对应文本框 → 名称写 `MiMo (via mimo2codex)` → 添加
+4. 点击新供应商激活——cc-switch 自动写 Codex 的配置文件。后续切回 OpenAI 官方 / Azure / OpenRouter 都是一键，mimo2codex 进程不需要重启，只在被路由到时收到流量。
 
-> ⚠️ **流程要点**：mimo2codex 是个**本地 HTTP 代理服务**，必须**保持运行**才能接收 Codex 的请求。`print-cc-switch` 只是打印配置文本给你拷贝——它不启动任何东西。下面步骤 1（启代理）和步骤 2（拿配置文本）是两件独立的事。
-
-#### 1. 启动 mimo2codex 代理（必须保持运行）
-
-打开一个终端，进 mimo2codex 仓库目录：
-
-```bash
-cd /path/to/mimo2codex
-export MIMO_API_KEY=sk-xxxxxxxxxxxxxxxx
-npm run dev      # 或 node dist/cli.js
-```
-
-看到 `listening on http://127.0.0.1:8788` 就成了。**这个终端不要关**——关了代理就停了，Codex 就连不上。
-
-要让它常驻后台（开机自启 / pm2 / systemctl / Windows 任务计划程序），见上面的 [**4. 让代理常驻后台**](#4-让代理常驻后台) 章节。
-
-#### 2. 拿到 cc-switch 配置片段
-
-**新开一个终端**（不要关掉步骤 1 的那个），跑：
-
-```bash
-cd /path/to/mimo2codex
-npm run dev -- print-cc-switch    # 或 node dist/cli.js print-cc-switch
-```
-
-输出：
-
-```
-# cc-switch — Add Provider → Codex tab → Custom
-
-# ───────── auth.json (粘到 auth.json 文本框) ─────────
-{
-  "OPENAI_API_KEY": "mimo2codex-local"
-}
-
-# ───────── config.toml (粘到 config.toml 文本框) ─────────
-model_provider = "mimo2codex"
-model = "mimo-v2.5-pro"
-
-[model_providers.mimo2codex]
-name = "MiMo (via mimo2codex)"
-base_url = "http://127.0.0.1:8788/v1"
-wire_api = "responses"
-requires_openai_auth = true
-request_max_retries = 1
-```
-
-#### 3. 在 cc-switch 里添加
-
-打开 cc-switch → 顶部切到 **Codex** Tab → 点右上角 **+** 号 → 选「**应用专属供应商**」→ 预设选「**自定义**」（或 Custom）：
-
-| 字段 | 填入 |
-|---|---|
-| **名称** | `MiMo (via mimo2codex)` |
-| **auth.json** | 上面 print-cc-switch 输出的 auth.json 部分（整段 JSON） |
-| **config.toml** | 上面 print-cc-switch 输出的 config.toml 部分（整段 TOML） |
-| **备注**（可选） | `本地 mimo2codex 代理 → MiMo V2.5 Pro` |
-
-点「添加」即可。
-
-#### 4. 切换并启动 Codex
-
-回到 cc-switch 主界面，在 Codex 列表里点击「**MiMo (via mimo2codex)**」，让它变成当前激活供应商（cc-switch 会自动写入 `~/.codex/auth.json` 和 `~/.codex/config.toml`）。
-
-然后跑：
-
-```bash
-codex
-```
-
-完事。
-
-> 💡 **小贴士**：cc-switch 的「获取模型」按钮（下载图标）会调用 `/v1/models` 端点。mimo2codex 已经实现了这个端点，所以你点一下就能下拉选 `mimo-v2.5-pro` / `mimo-v2.5-pro[1m]` / `mimo-v2-flash`。
-
----
-
-### C. 在多个 Codex 供应商之间随时切换
-
-cc-switch 的核心价值就是**一键切换**。结合 mimo2codex 后，你可以同时拥有：
-
-| 名称 | 用途 |
-|---|---|
-| OpenAI 官方（cc-switch 内置预设） | GPT-5.2、思考能力最强但贵 |
-| **MiMo (via mimo2codex)** | MiMo V2.5 Pro，1M 上下文，国内访问快 |
-| Azure OpenAI（cc-switch 内置） | 企业合规走 Azure |
-| OpenRouter（cc-switch 内置） | 多家模型聚合 |
-| AiHubMix / DMXAPI（cc-switch 内置） | 国内中转 |
-
-切换流程：
-
-1. 打开 cc-switch
-2. Codex Tab 里点想用的那个供应商
-3. 顶部托盘也能直接切（cc-switch 支持）
-4. 当前 Codex 会话不需要重启——下次启动 `codex` 就用新的了
-
-> ⚠️ **注意**：mimo2codex 进程要保持运行状态。即使你在 cc-switch 里切到了别的供应商也没关系——mimo2codex 只在被路由到时才接收请求，不会消耗资源。可以挂在 `pm2`、Windows 服务或 systemd 用户单元里常驻。
-
----
+cc-switch 的「获取模型」按钮调 `/v1/models`，mimo2codex 已实现——下拉里能直接选 `mimo-v2.5-pro` / `mimo-v2.5-pro[1m]` / `mimo-v2-flash`。
 
 ## CLI 参数速查
 
 | 参数 | 环境变量 | 默认 | 说明 |
 |---|---|---|---|
 | `--port`, `-p` | `MIMO2CODEX_PORT` | `8788` | 监听端口 |
-| `--host` | `MIMO2CODEX_HOST` | `127.0.0.1` | 绑定地址（建议不要暴露到公网） |
-| `--base-url` | `MIMO_BASE_URL` | `https://api.xiaomimimo.com/v1` | 切换到 Token 套餐：`https://token-plan-cn.xiaomimimo.com/v1` |
-| `--api-key` | `MIMO_API_KEY` | _必填_ | 上游 MiMo 的 Key |
-| `--no-reasoning` | `MIMO2CODEX_NO_REASONING=1` | 关 | 终端不显示思考摘要（多轮工具调用时仍会回填给 MiMo） |
-| `--verbose`, `-v` | `MIMO2CODEX_VERBOSE=1` | 关 | 打印每次翻译的请求 |
+| `--host` | `MIMO2CODEX_HOST` | `127.0.0.1` | 绑定地址 |
+| `--base-url` | `MIMO_BASE_URL` | `https://api.xiaomimimo.com/v1` | Token 套餐改 `https://token-plan-cn.xiaomimimo.com/v1` |
+| `--api-key` | `MIMO_API_KEY` | _必填_ | 上游 MiMo Key |
+| `--no-reasoning` | `MIMO2CODEX_NO_REASONING=1` | 关 | 终端不显示思考（多轮工具调用仍回填给 MiMo） |
+| `--verbose`, `-v` | `MIMO2CODEX_VERBOSE=1` | 关 | 打印每次翻译的请求体 |
 
 子命令：
 
 ```bash
-mimo2codex                          # 启动代理
-mimo2codex print-config             # 输出 ~/.codex/config.toml 片段
-mimo2codex print-cc-switch          # 输出 cc-switch 自定义供应商片段
-mimo2codex --port 9000 print-config # 端口换 9000 后再输出
+mimo2codex print-config             # 默认 auth.json + config.toml 两段
+mimo2codex print-config --env-key   # 老的环境变量方式（仅 CLI 适用）
+mimo2codex print-cc-switch          # cc-switch 自定义供应商片段
 ```
-
----
 
 ## 故障排查
 
-**Q：Codex 启动报 `Missing environment variable: MIMO2CODEX_KEY`（或类似的 env var 缺失）**
+<details>
+<summary><b>报 <code>Missing environment variable: MIMO2CODEX_KEY</code></b></summary>
 
-A：你的 `~/.codex/config.toml` 里写了 `env_key = "MIMO2CODEX_KEY"`，Codex 启动时会去**自己进程的环境变量**里找这个名字，没找到就报错。
+你 `config.toml` 还在用老的 `env_key = "MIMO2CODEX_KEY"`，桌面端不读 shell 环境变量。换成 auth.json 方式：把 `env_key = "..."` 改成 `requires_openai_auth = true`，再写 `~/.codex/auth.json` 为 `{"OPENAI_API_KEY": "mimo2codex-local"}`。或者直接 `mimo2codex print-config` 重新拿默认输出粘贴。
 
-最容易踩的坑是 **Codex 桌面端**：你在终端 `export MIMO2CODEX_KEY=anything` 是对的，但桌面端是从 Finder / 开始菜单启动的，**不会继承 shell 的环境变量**。
+</details>
 
-**修复（推荐：改成 auth.json 方式，CLI 和桌面端通用）**：
+<details>
+<summary><b>报 <code>404: No endpoints found that support image input</code></b></summary>
 
-1. 编辑 `~/.codex/config.toml`（Windows: `%USERPROFILE%\.codex\config.toml`），把 mimo2codex 段落里的：
-   ```toml
-   env_key = "MIMO2CODEX_KEY"
-   ```
-   **删掉**，改成：
-   ```toml
-   requires_openai_auth = true
-   ```
-2. 写 `~/.codex/auth.json`（Windows: `%USERPROFILE%\.codex\auth.json`）：
-   ```json
-   { "OPENAI_API_KEY": "mimo2codex-local" }
-   ```
-3. **完全退出并重启 Codex**（桌面端：托盘右键 → 退出，不只是关窗口）
+模型不支持图。MiMo 系列里只有 `mimo-v2.5` 和 `mimo-v2-omni` 接受图片。把 `config.toml` 的 model 换成这两个之一，或交给 mimo2codex 自动剥图（`mimo-v2.5-pro` / `-flash` 上自动加占位文本）。
 
-或直接跑 `npm run dev -- print-config` 拿到现成的两段 snippet 复制即可。
+</details>
 
-**坚持用环境变量方式的（仅 CLI）**：
+<details>
+<summary><b>报 <code>400: Param Incorrect: text is not set</code></b></summary>
 
-- macOS / Linux：在 `~/.bashrc` / `~/.zshrc` 末尾加 `export MIMO2CODEX_KEY=anything`，`source` 一下，再启 `codex`。
-- Windows：用 `setx MIMO2CODEX_KEY anything`（不是 `set`），打开**新的** CMD 窗口再启动 Codex。`setx` 不会影响已经打开的窗口。
-- **注意**：这两种都不解决桌面端问题。桌面端用 auth.json 方式或 cc-switch。
+MiMo 的图像 API 要求每条带图消息必须同时有 `text` part。mimo2codex 自动补一个空格——确保你是最新版（`npm update -g mimo2codex` 或 `git pull && npm run build`）。
 
----
+</details>
 
-**Q：mimo2codex 跑起来了但 Codex 一直转圈 / 504 / connection refused？**
+<details>
+<summary><b>生成宠物时 Codex 报 <code>image_gen tool not available</code></b></summary>
 
-A：检查清单：
+是 Codex 的 `/hatch` 想调 OpenAI 图像 API——MiMo 没有图像生成能力。改用仓库自带的 [`mimoskill/scripts/generate_pet.py`](./mimoskill/scripts/generate_pet.py)，默认走免费的 Pollinations.ai，**不需要任何 OpenAI key**。完整流程见 [mimoskill/SKILL.md](./mimoskill/SKILL.md)。
 
-1. mimo2codex 进程是否还在前台跑？看终端最后一行是不是 `listening on http://127.0.0.1:8788`
-2. `curl http://127.0.0.1:8788/healthz` 返回什么？应该是 `{"ok":true,...}`
-3. config.toml 里的 `base_url` 有没有以 `/v1` 结尾？必须是 `http://127.0.0.1:8788/v1`，不是 `http://127.0.0.1:8788`
-4. 端口冲突？默认 `8788`，被占了就 `npm run dev -- --port 9999`，**记得同步改 config.toml 里的 base_url**
+</details>
 
----
+<details>
+<summary><b>报 <code>stream disconnected before completion</code></b></summary>
 
-**Q：报 `MiMo returned 401 ...` 或 `authentication_error`**
+老版本 bug——确保 ≥ 0.1.0。SSE 事件 data 里必须带 `type` 字段，老构建漏了。
 
-A：你的 `MIMO_API_KEY`（启动 mimo2codex 时设的那个）无效。重新去 [platform.xiaomimimo.com](https://platform.xiaomimimo.com) 控制台 → API Keys 创建一个，注意 `sk-` 和 `tp-` 前缀对应不同 BASE_URL：
+</details>
 
-- `sk-xxx` → `--base-url https://api.xiaomimimo.com/v1`（默认）
-- `tp-xxx` → `--base-url https://token-plan-cn.xiaomimimo.com/v1`
+<details>
+<summary><b>日志被 <code>dropping unsupported tool type</code> 刷屏</b></summary>
 
----
+已修——已知服务端工具（`code_interpreter`、`image_generation`、`computer_use` 等）默默丢弃；未知类型每个会话只 WARN 一次，不再每次请求都刷。
 
-**Q：报 `MiMo returned 404: ... No endpoints found that support image input`**
+</details>
 
-A：请求里带了图片，但你的模型不支持图像。按 [MiMo 官方文档](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/multimodal-understanding/image-understanding)，**只有 `mimo-v2.5` 和 `mimo-v2-omni` 支持视觉**——`mimo-v2.5-pro` / `mimo-v2.5-pro[1m]` / `mimo-v2-flash` 都**不支持**。
+## mimoskill——填补 MiMo 的能力缺口
 
-mimo2codex 会按模型名自动判断：
+[mimoskill/](./mimoskill/) 是仓库根目录下一捆**辅助脚本 + 参考文档**。它存在的原因是有些事 MiMo 原生不支持（主要是图像生成），而 Codex 在客户端硬编码了一些能力假设，代理层压根改不动。
 
-| 模型 | 视觉 |
+### 为啥要这玩意
+
+| 问题 | mimo2codex 自己为啥搞不定 |
 |---|---|
-| `mimo-v2.5` / `mimo-v2.5[1m]` | ✅ |
-| `mimo-v2-omni` / `mimo-v2-omni[1m]` | ✅ |
-| `mimo-v2.5-pro` / `mimo-v2.5-pro[1m]` | ❌（自动丢图 + 加文本说明） |
-| `mimo-v2-flash` | ❌ |
+| `/hatch` 自定义宠物生成 | Codex 在**客户端**直接调 OpenAI 的 `image_gen` 工具——MiMo 没图像生成 endpoint，代理也没法假装有，因为 Codex 根本不把这个请求送到代理来。 |
+| Codex 内的图片生成 | 同上，代理拦不住客户端硬编码。 |
+| 在 Codex 之外直接调 MiMo | mimo2codex 是代理不是 SDK——一次性调用走脚本比启代理简单得多。 |
+| MiMo 的各种坑（图必须配 text、`max_completion_tokens`、`reasoning_content` 多轮回填等） | 每写一次脚本都要重学这些坑很烦，脚本里已经全踩好了。 |
 
-要用视觉能力，把 model 改成 `mimo-v2.5` 或 `mimo-v2-omni`：
+### 里面有啥
 
-```toml
-# ~/.codex/config.toml
-model = "mimo-v2.5"
-```
+| 文件 | 作用 |
+|---|---|
+| `SKILL.md` | Skill 清单——给 Claude / Codex agent 读的，描述什么时候该调哪个脚本 |
+| `scripts/mimo_chat.py` | 直接调 MiMo 的聊天 / 视觉 / 联网搜索，**纯标准库**（不用 `pip install openai`） |
+| `scripts/generate_pet.py` | 图片生成：`auto` 模式没 OpenAI key 时走免费 Pollinations，有就走 `gpt-image-1`；也支持 Replicate / 本地 SD |
+| `scripts/install_pet.sh` | 把生成的 PNG 装到 Codex 宠物目录（自动探测 macOS / Linux / Windows 路径） |
+| `references/models.md` | MiMo 模型能力矩阵 + 字段坑 |
+| `references/pet_workflow.md` | 宠物生成完整流程（单图 vs 多状态 bundle） |
+| `assets/pet_prompt_template.md` | 调好的 chibi 贴纸风格提示词模板 |
 
----
+### 三种用法
 
-**Q：报 `MiMo returned 400: Param Incorrect: \`text\` is not set`**
-
-A：MiMo 的 image API **要求每条带图片的 user 消息必须同时带至少一个 text part**——光发图不带文字会被拒。Codex 桌面端有时会发"光图无文字"的消息（比如粘贴图片直接回车）。
-
-mimo2codex 现在会自动在这种情况下补一个空白 text part（仅一个空格），让 MiMo 的参数校验通过。**这意味着你直接粘图发送也不会报错了**——模型会基于图片内容自己理解你想问啥。
-
----
-
-**Q：日志里看到 `dropping unsupported tool type "xxx"`，这些都不能用吗？**
-
-A：分情况：
-
-| Codex 发来的工具类型 | mimo2codex 怎么处理 | 说明 |
-|---|---|---|
-| `function` | ✅ 透传 | 标准 function tool，所有 LLM 都认 |
-| `local_shell` | ✅ 翻译成 `shell` 函数 | Codex 自动 fallback，调用照常 |
-| `custom` | ✅ 翻译成 function tool | 自由格式 / grammar 工具，丢失了 grammar 约束但能调用 |
-| `namespace` | ✅ 递归展开里面的子工具 | MCP 等分组工具 |
-| **`web_search` / `web_search_preview`** | ✅ **翻译成 MiMo 的 `web_search` builtin** | 联网搜索！见下一题 |
-| `code_interpreter` | ❌ 丢弃（仅 debug 日志） | OpenAI 服务端独占，MiMo 无等价物 |
-| `file_search` / `image_generation` | ❌ 丢弃 | 同上 |
-| `computer_use_preview` | ❌ 丢弃 | 同上 |
-| 其他陌生类型 | ❌ 丢弃，**首次见到时打 WARN**（同类型只警告一次，不刷屏） | 欢迎提 issue 让我们加翻译 |
-
-被丢弃的"服务端工具"是 OpenAI 自己跑的——MiMo 这边没有对应的实现，强行送过去 MiMo 也不会认。
-
-之前每次请求都会刷屏的问题修了：现在只在**第一次见到某个未知类型**时 WARN 一次，已知"服务端工具"完全静默（除非加 `--verbose` 才用 debug 级输出）。
-
----
-
-**Q：联网搜索（web_search）能用吗？**
-
-A：**能用！** mimo2codex 会把 Codex 的 `web_search` / `web_search_preview` 工具翻译成 MiMo 的原生 [Web Search builtin](https://platform.xiaomimimo.com/#/docs/usage-guide/tool-calling/web-search)，包括：
-
-- 透传 `user_location`（国家、城市、经纬度等）
-- 透传 MiMo 特有参数 `max_keyword`、`force_search`、`limit`（如果 Codex 发了的话）
-- 反向把 MiMo 返回的 `annotations`（搜索引用）翻译回 Codex 的 `url_citation` 格式，**Codex 终端会显示带链接的引用**
-- 流式场景下，每条搜索源会发 `response.output_text.annotation.added` 事件，Codex 边写边亮引用
-
-**前置条件**：
-
-1. 去 [MiMo 控制台 → 插件管理](https://platform.xiaomimimo.com/#/console/plugin)**激活 Web Search Plugin**（独立计费，不是包月送的）
-2. 计费规则见 [Pricing 页面](https://platform.xiaomimimo.com/#/docs/pricing)
-3. 一次问答里模型可能并发触发多个关键词搜索，每个都计一次费——可以通过 MiMo 自己的 `max_keyword` 限制
-
-激活完无需任何配置，Codex 启动联网功能、问个时事问题就会触发。
-
----
-
-## 常见问题
-
-**Q：Pet 宠物在 mimo2codex 后还能用吗？**
-
-A：**完全可用。** Pet 是桌面端的 UI 悬浮组件，状态来自 Codex 内部的 agent 状态（working / waiting-input / done / error）。这些状态由 Responses SSE 事件生命周期决定（`response.created` → `response.in_progress` → `response.output_item.added` → `response.completed` / `response.failed`）。mimo2codex 严格按规范发出全部事件，所以 pet 的转圈、闲置、完成、错误状态都会正确显示。
-
-**Q：工具调用支持哪些？**
-
-A：**全部 Codex 的内置工具都支持**——本地 shell、文件读写、apply_patch、web fetch 等。包括并行调用、多轮调用、流式 arguments delta。Codex 把工具定义放进 `tools` 字段，模型返回 `function_call` items；mimo2codex 在两种 API 之间双向翻译这部分，本地工具的执行还是 Codex 自己负责。
-
-**Q：图片 / 文件输入支持吗？**
-
-A：`input_image` 部分会被翻译成 `image_url` 格式透传——但 MiMo 的 chat API 只在 `mimo-v2-omni` 模型上接受图片，在 `mimo-v2.5-pro` 上会被上游静默丢弃。`input_file`（PDF 等）当前 MiMo chat API 不支持，会被丢弃并打 warn 日志。
-
-**Q：思考过程可以隐藏吗？**
-
-A：可以，启动时加 `--no-reasoning`。注意这只是不向 Codex 暴露——多轮工具调用时仍会把上一轮的 `reasoning_content` 回填给 MiMo（这是 MiMo 官方推荐的做法，能显著提升多轮工具调用质量）。
-
-**Q：为什么不直接改 Codex 让它接受 chat wire？**
-
-A：CLI 端确实可以降级到 0.80.0 临时绕过，但你会失去：
-- pet 宠物（5月新出）
-- 桌面端新版本的所有改进
-- 后续所有 Codex 新功能
-
-加一层协议 shim 是更小的改动、生命周期更长。
-
-**Q：和 [claude-code-router](https://github.com/musistudio/claude-code-router) 是什么关系？**
-
-A：思路一样（本地代理 + 协议翻译），但 claude-code-router 是面向 **Claude Code**（Anthropic Messages API）的；mimo2codex 是面向 **Codex**（OpenAI Responses API）的。两个工具可以并存。
-
-**Q：把端口改了之后 cc-switch 还能用吗？**
-
-A：能。改完用 `mimo2codex --port 9999 print-cc-switch` 拿新片段，去 cc-switch 里编辑一下「MiMo (via mimo2codex)」供应商的 config.toml 文本框（把 `base_url` 里的端口改了）即可。
-
-**Q：mimo2codex 会校验入站 Key 吗？**
-
-A：**不会。** 它只在 127.0.0.1 监听，假设你的本机是可信的。所有请求一律转发到 MiMo（用启动时的 `MIMO_API_KEY`）。这样设计是为了：
-- 解耦凭据：Codex / cc-switch 那边随便填一个非空字符串就行，真正的 MiMo Key 不会暴露给 Codex 进程
-- 简化使用：换 MiMo Key 不需要改 Codex / cc-switch 配置
-
-如果担心本机有恶意进程，请确保只 bind `127.0.0.1`（默认就是）。
-
-**Q：怎么看代理在干嘛？**
-
-A：启动时加 `--verbose`（或设环境变量 `MIMO2CODEX_VERBOSE=1`）：
+**1. 直接调用（普通用户，零配置）**
 
 ```bash
-# 方式 A
-npm run dev -- --verbose
-# 方式 B
-node dist/cli.js --verbose
-# 方式 C
-mimo2codex --verbose
+python3 mimoskill/scripts/mimo_chat.py "讲个笑话"
+python3 mimoskill/scripts/mimo_chat.py --image src.jpg "描述这张图"
+python3 mimoskill/scripts/generate_pet.py --description "chibi shiba 程序员" --out pet.png
+bash mimoskill/scripts/install_pet.sh pet.png shiba
 ```
 
-会在 stderr 打印每次的上游 POST、模型名、消息数、工具数、流式与否。API Key 会被脱敏成 `sk-x…xxxx`。
+**2. 当 Claude Code 的 Skill 用**——把目录软链到 `~/.claude/skills/`：
 
----
+```bash
+ln -s "$(pwd)/mimoskill" ~/.claude/skills/mimoskill
+```
+
+之后 Claude 会自动读 `SKILL.md`，遇到相关任务（"帮我从这张图生成宠物"）会自己路由到对应脚本。
+
+**3. 当 Codex agent 指南**——已经通过仓库根的 [AGENTS.md](./AGENTS.md) 接好了。Codex 每次启会话自动读 AGENTS.md，遇到生图 / 宠物相关任务会路由到 mimoskill 脚本，**不会再去 `pip install openai`**。
+
+### 用 mimoskill 替代 `/hatch` 生成宠物
+
+```bash
+# 生成（免费——没 OpenAI key 时默认用 Pollinations.ai）
+python3 mimoskill/scripts/generate_pet.py --description "chibi shiba 程序员" --out pet.png
+
+# 安装
+bash mimoskill/scripts/install_pet.sh pet.png shiba
+
+# 完全退出 + 重启 Codex，宠物菜单里挑新的
+```
+
+想要更高质量，设 `PET_OPENAI_API_KEY=sk-真OpenAI-key`（跟 `MIMO_API_KEY` 完全独立——只用于这一次图片生成调用），`auto` 模式会自动切到 `gpt-image-1`。多状态动画 bundle 用 `--bundle DIR/`。完整流程：[mimoskill/SKILL.md](./mimoskill/SKILL.md)。
 
 ## 项目结构
 
+![项目结构](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/tutorial-video/assets/04-agent-docs.jpg)
+
 ```
-mimo2codex/
-├── src/
-│   ├── cli.ts                    # 入口：argv 解析、启动 server、打印片段
-│   ├── server.ts                 # node:http server，路由 /v1/responses、/v1/models、/healthz
-│   ├── config.ts                 # env + flags 合并
-│   ├── upstream/
-│   │   ├── mimoClient.ts         # 调上游 fetch 包装（重试 / 错误归一化）
-│   │   └── chatStream.ts         # 上游 Chat SSE → ChatStreamChunk 异步迭代器
-│   ├── translate/
-│   │   ├── types.ts              # Responses + ChatCompletions 类型定义
-│   │   ├── reqToChat.ts          # 请求方向翻译
-│   │   ├── respToResponses.ts    # 非流式响应翻译
-│   │   └── streamToSse.ts        # 流式响应状态机
-│   └── util/
-│       ├── ids.ts                # resp_*, msg_*, fc_*, rs_* id 生成
-│       ├── sse.ts                # SSE 写入 / 测试用 in-memory sink
-│       └── log.ts                # debug/info/warn/error + 脱敏
-├── test/                          # 25 个 vitest 单测
-├── dist/                          # tsc 输出（构建后产生）
-├── package.json
-├── tsconfig.json
-└── vitest.config.ts
+src/                 # TypeScript 源码（cli、server、translate、upstream、util）
+test/                # 46 个 vitest 用例
+mimoskill/           # MiMo 辅助工具 + 宠物生成绕路方案
+scripts/install.{sh,ps1}  # 一键安装脚本
+dist/                # tsc 编译产物
+AGENTS.md            # Codex agent 说明（不要装 openai，用 mimoskill）
+PUBLISHING.md        # 维护者发布手册
 ```
+
+## 开发
+
+```bash
+git clone https://github.com/7as0nch/mimo2codex && cd mimo2codex
+npm install
+npm run dev          # tsx 直接跑，不用构建
+npm test             # 46 个 vitest
+npm run build        # 产出 dist/
+```
+
+把本地代码注册成全局 `mimo2codex` 命令：`npm run build && npm link`。
 
 ## 许可证
 
-MIT
+MIT，见 [LICENSE](./LICENSE)。
