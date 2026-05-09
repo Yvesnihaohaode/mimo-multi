@@ -4,7 +4,7 @@
 
 让**最新版** OpenAI Codex CLI / Codex 桌面端无缝接入**小米 MiMo V2.5** 的本地代理。把 Codex 的 Responses API 实时翻译成 MiMo 的 Chat Completions API，纯本地无状态。
 
-![mimo2codex 安装与启动](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B.jpg)
+![mimo2codex 安装与启动](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/npminstall.jpg)
 
 ## 解决什么问题
 

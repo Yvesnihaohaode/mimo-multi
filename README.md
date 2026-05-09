@@ -4,7 +4,7 @@
 
 Local proxy that lets the **latest OpenAI Codex CLI / desktop** talk to **Xiaomi MiMo V2.5**, by translating Codex's Responses API ↔ MiMo's Chat Completions API on the fly. Stateless, no telemetry, runs on `127.0.0.1`.
 
-![mimo2codex install + run](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B.jpg)
+![mimo2codex install + run](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/npminstall.jpg)
 
 ## Why
 
