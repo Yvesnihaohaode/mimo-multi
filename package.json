@@ -42,9 +42,9 @@
     "test:watch": "vitest",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build && npm test",
-    "release:patch": "npm version patch && npm publish && git push --follow-tags",
-    "release:minor": "npm version minor && npm publish && git push --follow-tags",
-    "release:major": "npm version major && npm publish && git push --follow-tags"
+    "release:patch": "npm version patch && git push --follow-tags",
+    "release:minor": "npm version minor && git push --follow-tags",
+    "release:major": "npm version major && git push --follow-tags"
   },
   "dependencies": {
     "eventsource-parser": "^3.0.0",
