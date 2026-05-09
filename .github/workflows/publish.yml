@@ -21,6 +21,9 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
 
       - run: npm ci
 
@@ -34,7 +37,11 @@ jobs:
             exit 1
           fi
 
-      - run: npm run build
+      # Run the same build-all + tests we expect prepublishOnly to run, so any
+      # failure (frontend build, type errors, etc.) surfaces before we hit
+      # `npm publish` and consumes the version slot. `npm publish` will still
+      # re-run prepack to produce the final tarball.
+      - run: npm run build:all
       - run: npm test
 
       - run: npm publish --provenance --access public
