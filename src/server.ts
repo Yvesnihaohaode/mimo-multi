@@ -7,7 +7,7 @@ import { iterChatStreamChunks } from "./upstream/chatStream.js";
 import { callMimo, UpstreamError } from "./upstream/mimoClient.js";
 import { makeServerResponseSink } from "./util/sse.js";
 import { log } from "./util/log.js";
-import type { ChatResponse, ResponsesRequest } from "./translate/types.js";
+import type { ChatRequest, ChatResponse, ResponsesRequest } from "./translate/types.js";
 
 const KEEPALIVE_INTERVAL_MS = 15_000;
 
@@ -86,9 +86,26 @@ async function handleResponses(
     );
   }
 
-  const chat = reqToChat(payload);
+  // mimo2codex applies two default-on behaviors that compensate for MiMo's
+  // weaker agentic-coding training compared to GPT-5 / Claude:
+  //   - parallel_tool_calls: true        ← batch tool calls per turn
+  //   - web_search forwarded to MiMo     ← model decides when to search
+  //
+  // Note on web_search: if the user's MiMo account doesn't have the Web Search
+  // Plugin activated, MiMo returns 400 "webSearchEnabled is false". We do NOT
+  // silently strip + retry — that hides a real billing/feature issue. Instead
+  // we surface the error verbatim with a friendlier message (see mimoClient.ts)
+  // so the user activates the plugin (or accepts the limitation) and restarts.
+  //
+  // Note: we deliberately do NOT set `thinking: {type: "disabled"}` so that
+  // MiMo keeps generating `reasoning_content`. The user typically wants to
+  // see the thinking in the Codex terminal (use `--no-reasoning` to hide it).
+  const chat = reqToChat(payload, {
+    forceParallelToolCalls: true,
+    enableWebSearch: true,
+  });
+  chat.stream = !!payload.stream;
   const stream = !!payload.stream;
-  chat.stream = stream;
 
   const ac = new AbortController();
   req.on("close", () => ac.abort());
@@ -163,6 +180,82 @@ async function handleResponses(
   }
 }
 
+// Passthrough for POST /v1/chat/completions. mimo2codex's primary surface is
+// the Responses API translation, but plenty of tools (cc-switch's "test
+// connection" probe, Cherry Studio, raw OpenAI SDKs) only speak Chat
+// Completions. Since MiMo is itself Chat Completions–native, the cleanest
+// answer is to forward the body verbatim and stream/return whatever upstream
+// gives back. No translation, no state.
+async function handleChatPassthrough(
+  cfg: Config,
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  let payload: ChatRequest;
+  try {
+    payload = await readJsonBody<ChatRequest>(req);
+  } catch (err) {
+    return sendJson(
+      res,
+      400,
+      errorEnvelope(400, "invalid_json", `failed to parse request body: ${(err as Error).message}`)
+    );
+  }
+  if (!payload.model) {
+    return sendJson(
+      res,
+      400,
+      errorEnvelope(400, "missing_model", "request body must include 'model'")
+    );
+  }
+
+  const ac = new AbortController();
+  req.on("close", () => ac.abort());
+
+  let upstreamRes: Response;
+  try {
+    upstreamRes = await callMimo(
+      { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, userAgent: cfg.userAgent },
+      payload,
+      ac.signal
+    );
+  } catch (err) {
+    if (err instanceof UpstreamError) {
+      return sendJson(res, err.status, errorEnvelope(err.status, err.code, err.message));
+    }
+    log.error("chat passthrough failed", { error: (err as Error).message });
+    return sendJson(res, 500, errorEnvelope(500, "internal_error", (err as Error).message));
+  }
+
+  const contentType = upstreamRes.headers.get("content-type") ?? "application/json";
+  res.statusCode = 200;
+  res.setHeader("Content-Type", contentType);
+
+  if (payload.stream) {
+    if (!upstreamRes.body) {
+      res.end();
+      return;
+    }
+    const reader = upstreamRes.body.getReader();
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) res.write(Buffer.from(value));
+      }
+    } catch (err) {
+      log.error("chat passthrough stream error", { error: (err as Error).message });
+    } finally {
+      res.end();
+    }
+    return;
+  }
+
+  const text = await upstreamRes.text();
+  res.end(text);
+}
+
 function handleModels(res: ServerResponse): void {
   sendJson(res, 200, {
     object: "list",
@@ -188,6 +281,10 @@ export function startServer(cfg: Config): Server {
     }
     if (req.method === "POST" && url.startsWith("/v1/responses")) {
       void handleResponses(cfg, req, res);
+      return;
+    }
+    if (req.method === "POST" && url.startsWith("/v1/chat/completions")) {
+      void handleChatPassthrough(cfg, req, res);
       return;
     }
     sendJson(res, 404, errorEnvelope(404, "not_found", `no route for ${req.method} ${url}`));

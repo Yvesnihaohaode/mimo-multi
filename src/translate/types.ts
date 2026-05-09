@@ -263,7 +263,9 @@ export interface ChatRequest {
   stop?: string | string[] | null;
   frequency_penalty?: number | null;
   presence_penalty?: number | null;
-  // MiMo-specific knob (forwarded if supplied via x-mimo extras header)
+  // MiMo-specific. Set thinking.type to "disabled" to skip reasoning mode and
+  // make the model more action-oriented for agentic / tool-heavy tasks.
+  thinking?: { type: "enabled" | "disabled" | "auto" };
   enable_thinking?: boolean;
 }
 

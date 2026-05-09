@@ -159,6 +159,28 @@ MiMo 的图像 API 要求每条带图消息必须同时有 `text` part。mimo2co
 
 </details>
 
+<details>
+<summary><b>报 <code>400: web search tool found in the request body, but webSearchEnabled is false</b></summary>
+
+是老版本。新版 mimo2codex 会自动捕获这个 400、剥掉 web_search 重试，并在本次进程里记住"插件未激活"，后续请求自动跳过 web_search——**不会再报错**。升到最新即可：`npm update -g mimo2codex`（或 `git pull && npm run build`）。
+
+如果你**确实**想让联网搜索工作，去 [MiMo 控制台 → 插件管理](https://platform.xiaomimimo.com/#/console/plugin) 激活 Web Search Plugin（独立计费），然后重启 mimo2codex 即可。
+
+</details>
+
+<details>
+<summary><b>Codex 说"我现在做 X"然后回合就结束了，没真调工具</b></summary>
+
+MiMo 在多步 agentic 编码任务上的弱点——模型把 token 花在"叙述"上不真调工具。mimo2codex 默认强制 `parallel_tool_calls: true`（一回合多个工具调用），通常能缓解。
+
+如果还是踩到，**最有效的技巧是改提示词**——用命令式替代"继续"：
+
+> 不要解释，直接调 apply_patch 写完整文件内容
+
+这种格式（具体指令 + 显式工具名 + "不要解释"）对 MiMo 的稳定性比"继续"高得多。
+
+</details>
+
 ## mimoskill——填补 MiMo 的能力缺口
 
 [mimoskill/](./mimoskill/) 是仓库根目录下一捆**辅助脚本 + 参考文档**。它存在的原因是有些事 MiMo 原生不支持（主要是图像生成），而 Codex 在客户端硬编码了一些能力假设，代理层压根改不动。

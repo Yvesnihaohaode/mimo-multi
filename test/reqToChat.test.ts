@@ -370,9 +370,9 @@ describe("reqToChat", () => {
     expect(reqToChat(req).stream).toBe(true);
   });
 
-  it("drops only the builtin tools that have no MiMo equivalent (code_interpreter etc.)", () => {
-    // web_search_preview is now TRANSLATED to MiMo's web_search builtin, so it
-    // should remain. code_interpreter has no MiMo equivalent → dropped.
+  it("drops web_search by default (Web Search Plugin not assumed activated)", () => {
+    // web_search_preview is dropped unless --web-search is explicitly passed
+    // because MiMo's plugin is separately billed and 400s if not activated.
     const req: ResponsesRequest = {
       model: "mimo-v2.5-pro",
       input: "x",
@@ -383,6 +383,21 @@ describe("reqToChat", () => {
       ] as ResponsesRequest["tools"],
     };
     const chat = reqToChat(req);
+    expect(chat.tools).toHaveLength(1);
+    expect(chat.tools![0].type).toBe("function");
+  });
+
+  it("forwards web_search to MiMo when --web-search (enableWebSearch: true) is set", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "x",
+      tools: [
+        { type: "web_search_preview" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+        { type: "code_interpreter" } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
+        { type: "function", name: "shell", parameters: { type: "object" } },
+      ] as ResponsesRequest["tools"],
+    };
+    const chat = reqToChat(req, { enableWebSearch: true });
     expect(chat.tools).toHaveLength(2);
     const types = chat.tools!.map((t) => t.type).sort();
     expect(types).toEqual(["function", "web_search"]);
@@ -488,7 +503,7 @@ describe("reqToChat", () => {
     expect(chat.tools).toBeUndefined();
   });
 
-  it("Codex web_search_preview is translated to MiMo's native web_search builtin", () => {
+  it("Codex web_search_preview is translated to MiMo's native web_search builtin (with --web-search)", () => {
     const req: ResponsesRequest = {
       model: "mimo-v2.5-pro",
       input: "今天上海天气?",
@@ -500,18 +515,16 @@ describe("reqToChat", () => {
         } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
       ] as ResponsesRequest["tools"],
     };
-    const chat = reqToChat(req);
+    const chat = reqToChat(req, { enableWebSearch: true });
     expect(chat.tools).toHaveLength(1);
     const tool = chat.tools![0] as { type: string; user_location?: { city?: string } };
     expect(tool.type).toBe("web_search");
     expect(tool.user_location?.city).toBe("Shanghai");
-    // Codex's search_context_size has no MiMo equivalent → omitted
     expect((tool as Record<string, unknown>).search_context_size).toBeUndefined();
-    // No `function` wrapper — it's a builtin tool, not a function tool
     expect((tool as Record<string, unknown>).function).toBeUndefined();
   });
 
-  it("plain Codex web_search (no user_location) is translated and preserves MiMo extras", () => {
+  it("plain Codex web_search (no user_location) is translated and preserves MiMo extras (with --web-search)", () => {
     const req: ResponsesRequest = {
       model: "mimo-v2.5-pro",
       input: "x",
@@ -524,7 +537,7 @@ describe("reqToChat", () => {
         } as unknown as ResponsesRequest["tools"] extends Array<infer T> ? T : never,
       ] as ResponsesRequest["tools"],
     };
-    const chat = reqToChat(req);
+    const chat = reqToChat(req, { enableWebSearch: true });
     expect(chat.tools).toHaveLength(1);
     const tool = chat.tools![0] as Record<string, unknown>;
     expect(tool.type).toBe("web_search");
@@ -532,5 +545,37 @@ describe("reqToChat", () => {
     expect(tool.force_search).toBe(true);
     expect(tool.limit).toBe(3);
     expect(tool.user_location).toBeUndefined();
+  });
+
+  it("--disable-thinking adds `thinking: {type: 'disabled'}` to the chat body", () => {
+    const req: ResponsesRequest = { model: "mimo-v2.5-pro", input: "hi" };
+    const chat = reqToChat(req, { disableThinking: true });
+    expect((chat as Record<string, unknown>).thinking).toEqual({ type: "disabled" });
+  });
+
+  it("--disable-thinking is OFF by default (no `thinking` field added)", () => {
+    const req: ResponsesRequest = { model: "mimo-v2.5-pro", input: "hi" };
+    const chat = reqToChat(req);
+    expect((chat as Record<string, unknown>).thinking).toBeUndefined();
+  });
+
+  it("--force-parallel-tool-calls overrides Codex's parallel_tool_calls=false", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "hi",
+      parallel_tool_calls: false,
+    };
+    const chat = reqToChat(req, { forceParallelToolCalls: true });
+    expect(chat.parallel_tool_calls).toBe(true);
+  });
+
+  it("without --force-parallel-tool-calls, Codex's parallel_tool_calls value is respected", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: "hi",
+      parallel_tool_calls: false,
+    };
+    const chat = reqToChat(req);
+    expect(chat.parallel_tool_calls).toBe(false);
   });
 });

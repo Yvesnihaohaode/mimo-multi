@@ -9,6 +9,17 @@ export interface UpstreamConfig {
   idleTimeoutMs?: number;
 }
 
+// Marker that MiMo emits in 400 responses when web_search is forwarded but
+// the user's account doesn't have the Web Search Plugin activated.
+// Full param string: "web search tool found in the request body, but webSearchEnabled is false"
+const WEB_SEARCH_DISABLED_MARKER = "webSearchEnabled is false";
+
+const WEB_SEARCH_HINT =
+  "MiMo Web Search Plugin is not activated for this account. " +
+  "Activate it at https://platform.xiaomimimo.com/#/console/plugin (separately billed) " +
+  "and restart mimo2codex. The model has decided to call web_search; if your account " +
+  "doesn't include the plugin, this request will keep failing until activated.";
+
 export class UpstreamError extends Error {
   status: number;
   bodySnippet?: string;
@@ -106,11 +117,20 @@ export async function callMimo(
             ? "rate_limit_exceeded"
             : res.status >= 500
               ? "server_error"
-              : "bad_request";
+              : res.status === 400 && snippet?.includes(WEB_SEARCH_DISABLED_MARKER)
+                ? "web_search_plugin_not_activated"
+                : "bad_request";
+    const message =
+      res.status === 400 && snippet?.includes(WEB_SEARCH_DISABLED_MARKER)
+        ? `${WEB_SEARCH_HINT} (raw: ${snippet})`
+        : `MiMo returned ${res.status}: ${snippet ?? "(no body)"}`;
+    if (res.status === 400 && snippet?.includes(WEB_SEARCH_DISABLED_MARKER)) {
+      log.warn(WEB_SEARCH_HINT);
+    }
     throw new UpstreamError({
       status: res.status,
       code,
-      message: `MiMo returned ${res.status}: ${snippet ?? "(no body)"}`,
+      message,
       bodySnippet: snippet,
     });
   }

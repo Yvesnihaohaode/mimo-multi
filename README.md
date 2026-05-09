@@ -107,6 +107,15 @@ cc-switch's "Fetch Models" button calls `/v1/models`, which mimo2codex implement
 | `--no-reasoning` | `MIMO2CODEX_NO_REASONING=1` | off | hide reasoning from Codex (still preserved between turns) |
 | `--verbose`, `-v` | `MIMO2CODEX_VERBOSE=1` | off | log every translated request body |
 
+### Built-in defaults (no flag needed)
+
+mimo2codex applies two behaviors automatically to make MiMo behave more like the OpenAI / Anthropic models Codex was designed for:
+
+- **`parallel_tool_calls` forced on** — overrides Codex's default of `false`. Lets MiMo batch multiple tool calls per turn → fewer round-trips before the model commits to `apply_patch`.
+- **Web search auto-forwarded with auto-fallback** — Codex's `web_search`/`web_search_preview` is translated to MiMo's `web_search` builtin. The model decides when to invoke it (no extra prompting required). If your account doesn't have the Web Search Plugin activated, the first request returns a 400; mimo2codex catches it, strips `web_search`, retries, and remembers — subsequent requests in the same process skip web_search proactively. **Zero config either way.**
+
+> **Thinking mode is ON** — MiMo generates `reasoning_content` on every request and Codex shows it in the terminal. Pass `--no-reasoning` to hide thinking from the terminal (mimo2codex still re-injects it across turns for multi-turn tool quality, per [MiMo's official recommendation](https://platform.xiaomimimo.com/docs/zh-CN/quick-start/first-api-call)).
+
 Subcommands:
 
 ```bash
@@ -156,6 +165,28 @@ Old version bug — make sure you're on >= 0.1.0. Each SSE event must have <code
 <summary><b>Logs spammed with <code>dropping unsupported tool type</code></b></summary>
 
 Already fixed — known server-side tools (`code_interpreter`, `image_generation`, `computer_use`, etc.) are silently dropped at debug level. Unknown types warn once per session, not per request.
+
+</details>
+
+<details>
+<summary><b>MiMo returned 400: web search tool found in the request body, but webSearchEnabled is false</b></summary>
+
+You're on an old build. Newer mimo2codex catches this 400 automatically: it strips `web_search` and retries, then skips it for the rest of the session. Update with `npm update -g mimo2codex` (or `git pull && npm run build`) and the error stops appearing.
+
+If you actually want web search to work upstream, activate the Web Search Plugin at [MiMo console → Plugin Management](https://platform.xiaomimimo.com/#/console/plugin) (separately billed), then restart mimo2codex.
+
+</details>
+
+<details>
+<summary><b>Codex says "I'll do X" then ends the turn without calling any tool</b></summary>
+
+MiMo's known weakness on multi-step agentic coding — the model spends tokens narrating instead of calling tools. mimo2codex defaults `parallel_tool_calls: true` (lets MiMo batch tool calls per turn), which usually mitigates it.
+
+If you still hit it, the highest-leverage fix is **a more directive prompt** — replace "继续" with something like:
+
+> 不要解释，直接调 apply_patch 写完整文件内容
+
+This pattern (concrete instruction + explicit tool name + "don't explain") is much more reliable than "continue" with MiMo.
 
 </details>
 

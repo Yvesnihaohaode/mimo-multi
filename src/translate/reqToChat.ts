@@ -160,9 +160,24 @@ function warnOnce(toolType: string, msg: string): void {
   log.warn(msg);
 }
 
+export interface ReqToChatOpts {
+  // Add `thinking: {type: "disabled"}` to the chat body — MiMo skips its
+  // reasoning mode, which makes the model less likely to "narrate" without
+  // calling tools. Useful for agentic / coding workflows.
+  disableThinking?: boolean;
+  // Override Codex's `parallel_tool_calls: false` to true. Codex defaults to
+  // serial tool calls (one per round-trip); for MiMo this can cause the model
+  // to give up after 3-4 explore rounds without ever calling apply_patch.
+  forceParallelToolCalls?: boolean;
+  // Translate Codex's web_search/web_search_preview to MiMo's web_search
+  // builtin. Default OFF — MiMo's Web Search Plugin is separately billed and
+  // returns 400 "webSearchEnabled is false" if not activated.
+  enableWebSearch?: boolean;
+}
+
 // Returns one or more ChatTools (a `namespace` wrapper can expand to many),
 // or null if the tool is unrecognized / unsupported.
-function toolToChat(t: ResponsesTool): ChatTool | ChatTool[] | null {
+function toolToChat(t: ResponsesTool, opts: ReqToChatOpts): ChatTool | ChatTool[] | null {
   // 1. Standard OpenAI function tool — pass through.
   if (t.type === "function") {
     const ft = t as { type: "function"; name?: string; description?: string; parameters?: Record<string, unknown>; strict?: boolean | null };
@@ -189,11 +204,15 @@ function toolToChat(t: ResponsesTool): ChatTool | ChatTool[] | null {
   }
 
   // 2.5. OpenAI's `web_search` / `web_search_preview` → MiMo's native `web_search`.
-  //      MiMo's format is similar (user_location + a few extras like max_keyword,
-  //      force_search, limit). OpenAI's `search_context_size` has no MiMo
-  //      equivalent — drop it. The MiMo Web Search Plugin must be activated
-  //      in the user's console for this to actually work upstream.
+  //      Forwarded by default; the server passes enableWebSearch: true. The
+  //      option is kept for tests and for any future "off switch". If MiMo
+  //      rejects with `webSearchEnabled is false` (plugin not activated for
+  //      that account), mimoClient surfaces a clear error to the user — we do
+  //      NOT silently retry, so users see the real configuration issue.
   if (t.type === "web_search" || t.type === "web_search_preview") {
+    if (!opts.enableWebSearch) {
+      return null;
+    }
     const w = t as {
       user_location?: ChatWebSearchTool["user_location"];
       max_keyword?: number;
@@ -260,7 +279,7 @@ function toolToChat(t: ResponsesTool): ChatTool | ChatTool[] | null {
     }
     const nested: ChatTool[] = [];
     for (const inner of ns.tools) {
-      const r = toolToChat(inner);
+      const r = toolToChat(inner, opts);
       if (Array.isArray(r)) nested.push(...r);
       else if (r) nested.push(r);
     }
@@ -376,7 +395,7 @@ function inputItemsToMessages(
   return out;
 }
 
-export function reqToChat(req: ResponsesRequest): ChatRequest {
+export function reqToChat(req: ResponsesRequest, opts: ReqToChatOpts = {}): ChatRequest {
   const messages: ChatMessage[] = [];
   const ctx = {
     model: req.model,
@@ -404,7 +423,7 @@ export function reqToChat(req: ResponsesRequest): ChatRequest {
   if (req.tools && req.tools.length > 0) {
     const mapped: ChatTool[] = [];
     for (const t of req.tools) {
-      const r = toolToChat(t);
+      const r = toolToChat(t, opts);
       if (Array.isArray(r)) mapped.push(...r);
       else if (r) mapped.push(r);
     }
@@ -413,7 +432,10 @@ export function reqToChat(req: ResponsesRequest): ChatRequest {
   const tc = toolChoiceToChat(req.tool_choice);
   if (tc !== undefined) chat.tool_choice = tc;
 
-  if (req.parallel_tool_calls !== undefined) {
+  // parallel_tool_calls: --force-parallel-tool-calls overrides Codex's value.
+  if (opts.forceParallelToolCalls) {
+    chat.parallel_tool_calls = true;
+  } else if (req.parallel_tool_calls !== undefined) {
     chat.parallel_tool_calls = req.parallel_tool_calls;
   }
   if (req.temperature !== undefined && req.temperature !== null) {
@@ -424,6 +446,13 @@ export function reqToChat(req: ResponsesRequest): ChatRequest {
   }
   if (req.max_output_tokens !== undefined && req.max_output_tokens !== null) {
     chat.max_completion_tokens = req.max_output_tokens;
+  }
+
+  // --disable-thinking: tells MiMo to skip its reasoning mode. Helps when the
+  // model would otherwise spend tokens narrating ("I'll do X") and end the
+  // turn without ever calling a tool.
+  if (opts.disableThinking) {
+    chat.thinking = { type: "disabled" };
   }
 
   return chat;

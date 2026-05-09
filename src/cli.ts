@@ -23,6 +23,18 @@ OPTIONS
   -V, --version           print version
   -h, --help              show this help
 
+DEFAULTS BAKED IN (no flag needed)
+      ✓ MiMo thinking mode ON — model generates reasoning_content; use
+        --no-reasoning to hide it from the Codex terminal (still preserved
+        between turns for multi-turn tool quality)
+      ✓ parallel_tool_calls forced on — model can batch tool calls per turn,
+        helps avoid "model says 'I'll do X' then ends" pattern
+      ✓ Codex web_search forwarded to MiMo's web_search builtin. If your account
+        doesn't have the Web Search Plugin activated, MiMo returns 400
+        "webSearchEnabled is false" — mimo2codex surfaces that error so you can
+        activate the plugin (https://platform.xiaomimimo.com/#/console/plugin,
+        separately billed) and restart, or accept that web search isn't available
+
 SUBCOMMANDS
   print-config            print ~/.codex/auth.json + config.toml snippets (default;
                           works for Codex CLI and desktop app)
