@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { extname, join, normalize, resolve } from "node:path";
+import { dirname, extname, join, normalize, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Config } from "../config.js";
 import { PROVIDER_LIST } from "../providers/registry.js";
 import {
@@ -29,14 +30,15 @@ import type { ProviderId } from "../providers/types.js";
 import { isProviderId } from "../providers/registry.js";
 import { log } from "../util/log.js";
 
-const STATIC_ROOT = (() => {
-  // dist/web/ is created when `web/` is built (vite.config.ts → outDir).
-  // tsc separately writes the admin handler bundle to dist/admin/, so the two
-  // paths cannot be the same — that's why the static root lives under
-  // dist/web/ rather than dist/admin/.
-  const candidate = resolve(process.cwd(), "dist", "web");
-  return candidate;
-})();
+// Locate dist/web/ relative to THIS module's compiled location, not
+// process.cwd(). When mimo2codex is installed globally (`npm install -g`),
+// the user invokes it from any working directory, so cwd is never the
+// install root — the previous cwd-based resolve always returned a missing
+// path and 503'd. The compiled file lives at <install>/dist/admin/router.js;
+// the static bundle lives at <install>/dist/web/.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const STATIC_ROOT = resolve(__dirname, "..", "web");
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -282,7 +284,8 @@ function serveStatic(res: ServerResponse, pathname: string): void {
     res.statusCode = 503;
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.end(
-      "Admin UI not built. Run `npm run web:build` (or `npm run build:all`) to populate dist/admin/.\n"
+      `Admin UI not built. Expected static bundle at ${STATIC_ROOT}.\n` +
+        "Run `npm run web:build` (or `npm run build:all`) to populate dist/web/.\n"
     );
     return;
   }
