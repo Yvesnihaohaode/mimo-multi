@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "../src/db/index.js";
-import { insertLog, queryLogs, aggregateMappings, aggregateStats } from "../src/db/logs.js";
+import { insertLog, queryLogs, aggregateMappings, aggregateStats, getLogById } from "../src/db/logs.js";
 import { listSettings, setSetting, ForbiddenSettingError } from "../src/db/settings.js";
 import {
   insertCustomModel,
@@ -110,6 +110,38 @@ describe("chat_logs", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].count).toBe(2);
     expect(rows[0].last_seen).toBe(2);
+  });
+
+  it("v2 columns: insertLog persists request_body, response_body, tool_call_count and getLogById returns them", () => {
+    insertLog({
+      ts: 500,
+      request_id: "rb1",
+      provider_id: "mimo",
+      client_model: "mimo-v2.5-pro",
+      upstream_model: "mimo-v2.5-pro",
+      endpoint: "/v1/responses",
+      status_code: 200,
+      duration_ms: 12,
+      prompt_tokens: 1,
+      completion_tokens: 2,
+      total_tokens: 3,
+      stream: true,
+      error_code: null,
+      error_snippet: null,
+      request_body: '{"input":"hi"}',
+      response_body: '{"output":"hello"}',
+      tool_call_count: 2,
+    });
+    const list = queryLogs({});
+    const head = list[0];
+    // Bodies excluded from list shape.
+    expect((head as unknown as { request_body?: unknown }).request_body).toBeUndefined();
+    expect(head.tool_call_count).toBe(2);
+    const detail = getLogById(head.id);
+    expect(detail).not.toBeNull();
+    expect(detail!.request_body).toBe('{"input":"hi"}');
+    expect(detail!.response_body).toBe('{"output":"hello"}');
+    expect(detail!.tool_call_count).toBe(2);
   });
 
   it("aggregateStats sums tokens within the requested range", () => {

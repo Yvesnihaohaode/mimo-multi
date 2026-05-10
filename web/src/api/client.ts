@@ -69,6 +69,12 @@ export interface LogRow {
   stream: number;
   error_code: string | null;
   error_snippet: string | null;
+  tool_call_count: number | null;
+}
+
+export interface LogDetail extends LogRow {
+  request_body: string | null;
+  response_body: string | null;
 }
 
 export interface MappingRow {
@@ -114,6 +120,7 @@ export const api = {
     const suffix = qs.toString() ? `?${qs}` : "";
     return request<{ logs: LogRow[] }>("GET", `/logs${suffix}`);
   },
+  logDetail: (id: number) => request<{ log: LogDetail }>("GET", `/logs/${id}`),
   deleteLogsBefore: (ts: number) =>
     request<{ removed: number }>("DELETE", `/logs?before=${ts}`),
   mappings: () => request<{ mappings: MappingRow[] }>("GET", "/mappings"),

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Config } from "./config.js";
 import { respToResponses } from "./translate/respToResponses.js";
-import { pipeChatStreamToResponses } from "./translate/streamToSse.js";
+import { pipeChatStreamToResponses, type StreamPipelineResult } from "./translate/streamToSse.js";
 import { iterChatStreamChunks } from "./upstream/chatStream.js";
 import { callOpenAICompat, UpstreamError } from "./upstream/openaiCompatClient.js";
 import { byClientModel, PROVIDER_LIST, PROVIDERS } from "./providers/registry.js";
@@ -11,6 +11,7 @@ import { log } from "./util/log.js";
 import type { ChatRequest, ChatResponse, ChatUsage, ResponsesRequest } from "./translate/types.js";
 import { handleAdmin } from "./admin/router.js";
 import { insertLog, type ChatLogEntry } from "./db/logs.js";
+import { redactSensitive } from "./util/redact.js";
 
 const KEEPALIVE_INTERVAL_MS = 15_000;
 
@@ -95,6 +96,28 @@ function usageFromChatResponse(u: ChatUsage | undefined): {
     completion_tokens: u.completion_tokens ?? null,
     total_tokens: u.total_tokens ?? null,
   };
+}
+
+// Stringify and redact a value before persisting to chat_logs.request_body
+// or response_body. Returns null on serialization failure so a corrupt body
+// never blocks the log insert.
+function bodyForLog(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  try {
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    return redactSensitive(text);
+  } catch {
+    return null;
+  }
+}
+
+function countToolCallsInChatResponse(resp: ChatResponse | undefined): number | null {
+  if (!resp || !Array.isArray(resp.choices)) return null;
+  let n = 0;
+  for (const c of resp.choices) {
+    if (c.message?.tool_calls) n += c.message.tool_calls.length;
+  }
+  return n;
 }
 
 // Route a request to a provider based on the client-supplied model field:
@@ -190,6 +213,7 @@ async function handleResponses(
   req.on("close", () => ac.abort());
 
   const startedAt = Date.now();
+  const requestBodySnapshot = bodyForLog(payload);
   const baseEntry = {
     request_id: null as string | null,
     provider_id: provider.id,
@@ -197,6 +221,7 @@ async function handleResponses(
     upstream_model: upstreamModel,
     endpoint: "/v1/responses",
     stream,
+    request_body: requestBodySnapshot,
   };
 
   if (!stream) {
@@ -224,6 +249,8 @@ async function handleResponses(
         ...usageFromChatResponse(chatJson.usage),
         error_code: null,
         error_snippet: null,
+        response_body: bodyForLog(responses),
+        tool_call_count: countToolCallsInChatResponse(chatJson),
       });
       return;
     } catch (err) {
@@ -238,6 +265,8 @@ async function handleResponses(
           total_tokens: null,
           error_code: err.code,
           error_snippet: err.bodySnippet ?? err.message,
+          response_body: null,
+          tool_call_count: null,
         });
         return;
       }
@@ -252,6 +281,8 @@ async function handleResponses(
         total_tokens: null,
         error_code: "internal_error",
         error_snippet: (err as Error).message,
+        response_body: null,
+        tool_call_count: null,
       });
       return;
     }
@@ -282,6 +313,8 @@ async function handleResponses(
         total_tokens: null,
         error_code: err.code,
         error_snippet: err.bodySnippet ?? err.message,
+        response_body: null,
+        tool_call_count: null,
       });
       return;
     }
@@ -296,6 +329,8 @@ async function handleResponses(
       total_tokens: null,
       error_code: "internal_error",
       error_snippet: (err as Error).message,
+      response_body: null,
+      tool_call_count: null,
     });
     return;
   }
@@ -305,9 +340,10 @@ async function handleResponses(
   res.on("close", () => clearInterval(keepalive));
 
   let streamError: Error | null = null;
+  let pipeResult: StreamPipelineResult | undefined;
   try {
     const chunks = iterChatStreamChunks(upstreamRes);
-    await pipeChatStreamToResponses(
+    pipeResult = await pipeChatStreamToResponses(
       sink,
       { chunks },
       payload,
@@ -327,15 +363,18 @@ async function handleResponses(
     }
   } finally {
     clearInterval(keepalive);
+    const u = pipeResult?.usage;
     recordLog(cfg, {
       ...baseEntry,
       status_code: streamError ? 500 : 200,
       duration_ms: Date.now() - startedAt,
-      prompt_tokens: null,
-      completion_tokens: null,
-      total_tokens: null,
+      prompt_tokens: u?.input_tokens ?? null,
+      completion_tokens: u?.output_tokens ?? null,
+      total_tokens: u?.total_tokens ?? null,
       error_code: streamError ? "stream_error" : null,
       error_snippet: streamError ? streamError.message : null,
+      response_body: bodyForLog(pipeResult?.response),
+      tool_call_count: pipeResult?.toolCallCount ?? null,
     });
   }
 }
@@ -475,6 +514,7 @@ async function handleChatPassthrough(
   req.on("close", () => ac.abort());
 
   const startedAt = Date.now();
+  const requestBodySnapshot = bodyForLog(payload);
   const baseEntry = {
     request_id: null as string | null,
     provider_id: provider.id,
@@ -482,6 +522,7 @@ async function handleChatPassthrough(
     upstream_model: upstreamModel,
     endpoint: "/v1/chat/completions",
     stream: !!payload.stream,
+    request_body: requestBodySnapshot,
   };
 
   let upstreamRes: Response;
@@ -508,6 +549,8 @@ async function handleChatPassthrough(
         total_tokens: null,
         error_code: err.code,
         error_snippet: err.bodySnippet ?? err.message,
+        response_body: null,
+        tool_call_count: null,
       });
       return;
     }
@@ -522,6 +565,8 @@ async function handleChatPassthrough(
       total_tokens: null,
       error_code: "internal_error",
       error_snippet: (err as Error).message,
+      response_body: null,
+      tool_call_count: null,
     });
     return;
   }
@@ -542,32 +587,46 @@ async function handleChatPassthrough(
         total_tokens: null,
         error_code: null,
         error_snippet: null,
+        response_body: null,
+        tool_call_count: null,
       });
       return;
     }
     const reader = upstreamRes.body.getReader();
     let streamError: Error | null = null;
+    // Buffer the SSE bytes as they fly through so we can persist the
+    // assembled response body and pull usage / tool_calls out of the final
+    // chunk. This is a passthrough so we don't decode events — just keep
+    // the raw text and parse the trailing `data:` lines after the stream
+    // completes.
+    const collectedChunks: Buffer[] = [];
     try {
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        if (value) res.write(Buffer.from(value));
+        if (value) {
+          const buf = Buffer.from(value);
+          collectedChunks.push(buf);
+          res.write(buf);
+        }
       }
     } catch (err) {
       streamError = err as Error;
       log.error("chat passthrough stream error", { error: streamError.message });
     } finally {
       res.end();
+      const collected = Buffer.concat(collectedChunks).toString("utf-8");
+      const { usage, toolCallCount } = summarizeChatSseStream(collected);
       recordLog(cfg, {
         ...baseEntry,
         status_code: streamError ? 500 : 200,
         duration_ms: Date.now() - startedAt,
-        prompt_tokens: null,
-        completion_tokens: null,
-        total_tokens: null,
+        ...usageFromChatResponse(usage),
         error_code: streamError ? "stream_error" : null,
         error_snippet: streamError ? streamError.message : null,
+        response_body: collected ? redactSensitive(collected) : null,
+        tool_call_count: toolCallCount,
       });
     }
     return;
@@ -577,9 +636,11 @@ async function handleChatPassthrough(
   res.end(text);
   // Try to extract token usage from the JSON body so logs reflect cost.
   let usage: ChatUsage | undefined;
+  let toolCallCount: number | null = null;
   try {
-    const parsed = JSON.parse(text) as { usage?: ChatUsage };
+    const parsed = JSON.parse(text) as ChatResponse;
     usage = parsed.usage;
+    toolCallCount = countToolCallsInChatResponse(parsed);
   } catch {
     // ignore
   }
@@ -590,7 +651,47 @@ async function handleChatPassthrough(
     ...usageFromChatResponse(usage),
     error_code: null,
     error_snippet: null,
+    response_body: text ? redactSensitive(text) : null,
+    tool_call_count: toolCallCount,
   });
+}
+
+// Walk the SSE bytes from a /v1/chat/completions stream and pluck out the
+// final usage chunk plus the running set of tool_calls. We accept best-effort
+// parsing — malformed lines are skipped silently.
+function summarizeChatSseStream(text: string): {
+  usage: ChatUsage | undefined;
+  toolCallCount: number | null;
+} {
+  if (!text) return { usage: undefined, toolCallCount: null };
+  let usage: ChatUsage | undefined;
+  const toolCallIndices = new Set<number>();
+  let sawAnyChunk = false;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const obj = JSON.parse(payload) as {
+        usage?: ChatUsage;
+        choices?: Array<{ delta?: { tool_calls?: Array<{ index?: number }> } }>;
+      };
+      sawAnyChunk = true;
+      if (obj.usage) usage = obj.usage;
+      const tc = obj.choices?.[0]?.delta?.tool_calls;
+      if (Array.isArray(tc)) {
+        for (const t of tc) {
+          if (typeof t.index === "number") toolCallIndices.add(t.index);
+        }
+      }
+    } catch {
+      // skip malformed
+    }
+  }
+  return {
+    usage,
+    toolCallCount: sawAnyChunk ? toolCallIndices.size : null,
+  };
 }
 
 function handleModels(cfg: Config, res: ServerResponse): void {

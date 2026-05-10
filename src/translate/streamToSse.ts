@@ -380,12 +380,21 @@ export interface StreamPipelineSource {
   chunks: AsyncIterable<ChatStreamChunk>;
 }
 
+export interface StreamPipelineResult {
+  usage: ResponsesUsage | null;
+  // The assembled responses object that mirrors the non-streaming shape.
+  // Used so the server can persist the response body to chat_logs without
+  // having to re-buffer every SSE chunk.
+  response: ResponsesObject | null;
+  toolCallCount: number;
+}
+
 export async function pipeChatStreamToResponses(
   sink: SseSink,
   source: StreamPipelineSource,
   req: ResponsesRequest,
   opts: StreamToSseOpts
-): Promise<void> {
+): Promise<StreamPipelineResult> {
   const state = new StreamState(req, opts.exposeReasoning);
 
   emit(sink, state, "response.created", {
@@ -397,7 +406,13 @@ export async function pipeChatStreamToResponses(
 
   try {
     for await (const chunk of source.chunks) {
-      if (sink.closed()) return;
+      if (sink.closed()) {
+        return {
+          usage: state.usage,
+          response: buildResponseSnapshot(state, "incomplete"),
+          toolCallCount: state.toolCalls.size,
+        };
+      }
       processChunk(sink, state, chunk);
     }
   } catch (err) {
@@ -408,7 +423,11 @@ export async function pipeChatStreamToResponses(
     failedSnapshot.error = { type: "upstream_error", message };
     emit(sink, state, "response.failed", { response: failedSnapshot });
     sink.end();
-    return;
+    return {
+      usage: state.usage,
+      response: failedSnapshot,
+      toolCallCount: state.toolCalls.size,
+    };
   }
 
   finalizeActive(sink, state);
@@ -417,4 +436,9 @@ export async function pipeChatStreamToResponses(
   const completed = buildResponseSnapshot(state, "completed");
   emit(sink, state, "response.completed", { response: completed });
   sink.end();
+  return {
+    usage: state.usage,
+    response: completed,
+    toolCallCount: state.toolCalls.size,
+  };
 }

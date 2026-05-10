@@ -71,4 +71,12 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 `,
   },
+  {
+    version: 2,
+    sql: `
+ALTER TABLE chat_logs ADD COLUMN request_body TEXT;
+ALTER TABLE chat_logs ADD COLUMN response_body TEXT;
+ALTER TABLE chat_logs ADD COLUMN tool_call_count INTEGER;
+`,
+  },
 ];

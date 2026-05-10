@@ -15,6 +15,12 @@ export interface ChatLogEntry {
   stream: boolean;
   error_code: string | null;
   error_snippet: string | null;
+  // JSON strings, redacted before being passed in. May be null when the
+  // upstream surface didn't yield a body we could capture (e.g. raw chat
+  // completions stream passthrough where we don't decode SSE).
+  request_body: string | null;
+  response_body: string | null;
+  tool_call_count: number | null;
 }
 
 const MAX_SNIPPET = 500;
@@ -31,12 +37,14 @@ export function insertLog(entry: ChatLogEntry): void {
         ts, request_id, provider_id, client_model, upstream_model,
         endpoint, status_code, duration_ms,
         prompt_tokens, completion_tokens, total_tokens,
-        stream, error_code, error_snippet
+        stream, error_code, error_snippet,
+        request_body, response_body, tool_call_count
       ) VALUES (
         @ts, @request_id, @provider_id, @client_model, @upstream_model,
         @endpoint, @status_code, @duration_ms,
         @prompt_tokens, @completion_tokens, @total_tokens,
-        @stream, @error_code, @error_snippet
+        @stream, @error_code, @error_snippet,
+        @request_body, @response_body, @tool_call_count
       )`
     )
     .run({
@@ -54,6 +62,9 @@ export function insertLog(entry: ChatLogEntry): void {
       stream: entry.stream ? 1 : 0,
       error_code: entry.error_code,
       error_snippet: snippet,
+      request_body: entry.request_body,
+      response_body: entry.response_body,
+      tool_call_count: entry.tool_call_count,
     });
 }
 
@@ -65,6 +76,8 @@ export interface LogFilter {
   offset?: number;
 }
 
+// Light-weight row for the table view. Bodies are intentionally excluded —
+// they can be large and we only want them on demand via getLogById.
 export interface LogRow {
   id: number;
   ts: number;
@@ -81,7 +94,18 @@ export interface LogRow {
   stream: number;
   error_code: string | null;
   error_snippet: string | null;
+  tool_call_count: number | null;
 }
+
+export interface LogDetailRow extends LogRow {
+  request_body: string | null;
+  response_body: string | null;
+}
+
+const LIST_COLUMNS =
+  "id, ts, request_id, provider_id, client_model, upstream_model, " +
+  "endpoint, status_code, duration_ms, prompt_tokens, completion_tokens, " +
+  "total_tokens, stream, error_code, error_snippet, tool_call_count";
 
 export function queryLogs(filter: LogFilter = {}): LogRow[] {
   const where: string[] = [];
@@ -103,9 +127,16 @@ export function queryLogs(filter: LogFilter = {}): LogRow[] {
   const offset = Math.max(filter.offset ?? 0, 0);
   return getDb()
     .prepare(
-      `SELECT * FROM chat_logs ${whereSql} ORDER BY ts DESC LIMIT @limit OFFSET @offset`
+      `SELECT ${LIST_COLUMNS} FROM chat_logs ${whereSql} ORDER BY ts DESC LIMIT @limit OFFSET @offset`
     )
     .all({ ...params, limit, offset }) as LogRow[];
+}
+
+export function getLogById(id: number): LogDetailRow | null {
+  const row = getDb()
+    .prepare(`SELECT * FROM chat_logs WHERE id = ?`)
+    .get(id) as LogDetailRow | undefined;
+  return row ?? null;
 }
 
 export interface MappingRow {

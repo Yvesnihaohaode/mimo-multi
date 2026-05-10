@@ -459,6 +459,9 @@ export function reqToChat(req: ResponsesRequest, opts: ReqToChatOpts = {}): Chat
     messages,
     stream: req.stream ?? false,
   };
+  if (chat.stream) {
+    chat.stream_options = { include_usage: true };
+  }
 
   if (req.tools && req.tools.length > 0) {
     const mapped: ChatTool[] = [];

@@ -307,4 +307,38 @@ describe("streamToSse", () => {
     expect(Array.isArray(data.response.output)).toBe(true);
     expect(typeof data.sequence_number).toBe("number");
   });
+
+  it("returns usage from the trailing chunk so the server can log token counts", async () => {
+    const sink = makeMemorySink();
+    const usageChunk: ChatStreamChunk = {
+      id: "x",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "mimo-v2.5-pro",
+      choices: [],
+      usage: { prompt_tokens: 12, completion_tokens: 34, total_tokens: 46 },
+    };
+    const result = await pipeChatStreamToResponses(
+      sink,
+      { chunks: fromList([chunk({ content: "hi" }, "stop"), usageChunk]) },
+      req,
+      { exposeReasoning: true }
+    );
+    expect(result.usage).toEqual({
+      input_tokens: 12,
+      output_tokens: 34,
+      total_tokens: 46,
+    });
+  });
+
+  it("returns usage=null when upstream omits the usage chunk", async () => {
+    const sink = makeMemorySink();
+    const result = await pipeChatStreamToResponses(
+      sink,
+      { chunks: fromList([chunk({ content: "hi" }, "stop")]) },
+      req,
+      { exposeReasoning: true }
+    );
+    expect(result.usage).toBeNull();
+  });
 });

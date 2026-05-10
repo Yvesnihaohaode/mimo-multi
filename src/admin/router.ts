@@ -8,6 +8,7 @@ import {
   aggregateMappings,
   aggregateStats,
   deleteLogsBefore,
+  getLogById,
   queryLogs,
 } from "../db/logs.js";
 import {
@@ -241,6 +242,17 @@ async function handleApi(ctx: RouteContext): Promise<void> {
     if (!before) return sendError(res, 400, "missing_before", "?before=<ts_ms> required");
     const removed = deleteLogsBefore(Number(before));
     return sendJson(res, 200, { removed });
+  }
+
+  // /admin/api/logs/:id — single log row including request_body + response_body.
+  // Kept off the list endpoint so a 100-row table fetch doesn't haul megabytes
+  // of payload across the wire on every refresh.
+  const logIdMatch = pathname.match(/^\/admin\/api\/logs\/(\d+)$/);
+  if (logIdMatch && req.method === "GET") {
+    const id = Number(logIdMatch[1]);
+    const row = getLogById(id);
+    if (!row) return sendError(res, 404, "not_found", `log ${id} not found`);
+    return sendJson(res, 200, { log: row });
   }
 
   if (req.method === "GET" && pathname === "/admin/api/mappings") {

@@ -260,6 +260,9 @@ export interface ChatRequest {
   top_p?: number | null;
   max_completion_tokens?: number | null;
   stream?: boolean;
+  // OpenAI-compatible: when streaming, include a final usage chunk so we can
+  // record token counts. Without this, upstream omits usage from stream chunks.
+  stream_options?: { include_usage?: boolean };
   stop?: string | string[] | null;
   frequency_penalty?: number | null;
   presence_penalty?: number | null;
