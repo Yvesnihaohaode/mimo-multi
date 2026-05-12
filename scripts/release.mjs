@@ -1,12 +1,21 @@
 #!/usr/bin/env node
 // Bump version + push tags, but pin the previous commit's subject to the
 // version bump's commit message so `git log` reads as
-// "0.1.16 - [fix] xxx" instead of a bare "0.1.16". `npm version` substitutes
-// %s with the new version, and we splice in `git log -1 --pretty=%s` taken
-// just before the bump.
+// "0.1.16 - [fix] xxx" instead of a bare "0.1.16".
+//
+// We deliberately skip `npm version`'s built-in `-m "%s ..."` substitution:
+// on Windows that argument gets mangled by cmd.exe (% is the env-var marker)
+// when running under pnpm/npm scripts. Instead we bump with
+// --no-git-tag-version, then craft the commit + tag ourselves via `git`,
+// which takes the message as a plain argv entry — no shell parsing involved.
 //
 // Usage: node scripts/release.mjs <patch|minor|major>
 import { execSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const bump = process.argv[2];
 if (!["patch", "minor", "major"].includes(bump)) {
@@ -16,7 +25,7 @@ if (!["patch", "minor", "major"].includes(bump)) {
 
 let lastSubject = "";
 try {
-  lastSubject = execSync("git log -1 --pretty=%s", { encoding: "utf8" }).trim();
+  lastSubject = execSync("git log -1 --pretty=%s", { encoding: "utf8", cwd: repoRoot }).trim();
 } catch {
   // first commit / detached state — just bump without context
 }
@@ -24,15 +33,32 @@ try {
 // Skip the splice if the previous commit was itself a version bump, so we
 // don't end up with "0.1.17 - 0.1.16".
 const looksLikeVersionBump = /^v?\d+\.\d+\.\d+(\s|$)/.test(lastSubject);
-const message = lastSubject && !looksLikeVersionBump ? `%s - ${lastSubject}` : "%s";
+const ctxSuffix = lastSubject && !looksLikeVersionBump ? ` - ${lastSubject}` : "";
 
-console.log(`[release] bump=${bump} message="${message}"`);
+function run(cmd, args) {
+  const r = spawnSync(cmd, args, { stdio: "inherit", cwd: repoRoot });
+  if (r.status !== 0) {
+    console.error(`[release] command failed: ${cmd} ${args.join(" ")}`);
+    process.exit(r.status ?? 1);
+  }
+}
 
-const bumpResult = spawnSync("npm", ["version", bump, "-m", message], {
-  stdio: "inherit",
-  shell: process.platform === "win32",
-});
-if (bumpResult.status !== 0) process.exit(bumpResult.status ?? 1);
+const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
-const pushResult = spawnSync("git", ["push", "--follow-tags"], { stdio: "inherit" });
-if (pushResult.status !== 0) process.exit(pushResult.status ?? 1);
+// 1. Bump version in package.json (+ package-lock.json if present); no commit, no tag.
+run(npm, ["version", bump, "--no-git-tag-version"]);
+
+// 2. Read the new version.
+const pkg = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
+const newVersion = pkg.version;
+const message = `${newVersion}${ctxSuffix}`;
+
+console.log(`[release] new version: ${newVersion}`);
+console.log(`[release] commit message: ${message}`);
+
+// 3. Commit the bumped manifest + tag at HEAD.
+run("git", ["commit", "-am", message]);
+run("git", ["tag", "-a", `v${newVersion}`, "-m", message]);
+
+// 4. Push branch + tag together.
+run("git", ["push", "--follow-tags"]);
