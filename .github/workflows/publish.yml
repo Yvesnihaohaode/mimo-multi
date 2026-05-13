@@ -16,10 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Pull tag objects (including their annotated messages) so the
-          # "Create GitHub Release" step below can read the tag subject
-          # written by scripts/release.mjs.
-          fetch-tags: true
+          # Need the annotated tag's message body for the "Create GitHub
+          # Release" step below (which reads it via `git tag -l --format`)
+          # and a non-shallow history for `--generate-notes` to walk back
+          # to the previous release. fetch-depth=0 covers both.
+          #
+          # Don't combine `fetch-tags: true` with the default shallow clone —
+          # actions/checkout has a bug where it tries to fetch both the
+          # commit SHA and the tag ref into the same ref name and fails
+          # with "Cannot fetch both <sha> and refs/tags/<name>".
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
