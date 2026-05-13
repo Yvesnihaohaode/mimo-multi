@@ -18,6 +18,8 @@
 
 让**最新版** OpenAI Codex CLI / Codex 桌面端接入主流大模型的本地代理。内置 **小米 MiMo V2.5** 与 **DeepSeek V4 Pro**，并提供**通用 provider 机制**——不改任何代码、不重新发包，就能把任何 **OpenAI Chat Completions 兼容**（Qwen / GLM / Kimi / 本地 vLLM / Ollama / LM Studio …）或**原生 Responses API**（OpenAI 自家）的上游接到新版 Codex。把 Codex 的 Responses API 实时翻译成上游的 Chat Completions API，按客户端发的 `model` 字段在 provider 之间自动路由。可配 admin Web 控制台。
 
+> 📌 **MiMo 用户重要提示**：按 [MiMo 官方公告](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content)，**每一条带 `tool_calls` 的 assistant 消息在后续轮次必须回传原始 `reasoning_content`**，否则 MiMo 直接 **400** 或软退化成幻觉（agent 不调工具、自言自语、烧 token）。Codex 在公告受影响产品清单里。**mimo2codex ≥ 0.2.3 自动处理这个回传**；老版本和大部分 Codex 侧的代理都不处理。碰到上述症状请[升级](#故障排查)。
+
 ![mimo2codex 安装与启动](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/npminstall.jpg)
 
 ![Admin 控制台 · 概览](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/admin-dashboard.png)
@@ -57,7 +59,7 @@
 - ✅ 工具调用——function tools、并行调用、`local_shell`、`custom`、MCP `namespace`
 - ✅ 联网搜索——翻译成 MiMo 原生 `web_search` builtin（需在控制台激活 Web Search Plugin）；DeepSeek 路径自动跳过
 - ✅ 视觉——`mimo-v2.5` / `mimo-v2-omni` 走视觉路径；pro/flash 自动剥图 + 占位文本
-- ✅ 思维链透传（`--no-reasoning` 隐藏）
+- ✅ 思维链透传 + 正确的**多轮 `reasoning_content` 回传**（按 [MiMo 官方公告](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content)要求；`--no-reasoning` 隐藏终端显示但回传仍完整保留）
 - ✅ MiMo 主机自动切换：`tp-*` key → token-plan 主机，`sk-*` key → pay-as-you-go 主机
 - ✅ 本地 Admin Web UI（`http://127.0.0.1:8788/admin/`）：模型清单 / 别名管理 / 聊天日志 / Token 统计 / Provider 配置
 - ✅ sqlite 持久化（默认 `~/.mimo2codex/data.db`，`--data-dir` 可改）
@@ -252,6 +254,29 @@ mimo2codex print-cc-switch          # cc-switch 自定义供应商片段
 ## 故障排查
 
 <details>
+<summary><b>MiMo 报 400 <code>The reasoning_content in the thinking mode must be passed back</code> / 多轮调工具时模型开始胡编 / 输出跟任务无关的"小说"</b></summary>
+
+按 [MiMo 官方公告](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content)：思考模式打开（默认）且历史里有工具调用时，**每一条带 `tool_calls` 的 assistant message 必须同时带原 `reasoning_content`**，否则模型上下文断裂。两种失败模式：
+
+| 严重程度 | 现象 |
+|---|---|
+| 🔴 **硬失败** | MiMo 直接 400 `"The reasoning_content in the thinking mode must be passed back"`。Codex 显示 "Provider returned 400"，对话卡死。 |
+| 🟡 **软退化** | 不报错但模型"自言自语"不调工具、编造跟提示无关的内容（如让生成宠物 sprite，模型输出影视娱乐冷知识）、说"我马上去做 X"然后回合结束。每跑飞一次烧 1k-5k token。 |
+
+**触发场景集中在多轮调工具的工作流**：agentic 编码、`/hatch` 替代品宠物生成、OCR 回灌、联网搜索链。Codex 出现在 MiMo 公告的受影响列表里（同列还有 Cursor、TRAE、Roo Code、Copilot CLI 等）。
+
+**修复**：升级到 `mimo2codex >= 0.2.3`。老版本只把 reasoning 塞 `summary[].text`，`--no-reasoning` 模式甚至完全丢弃；0.2.3+ 把完整 trace 同时存进 `encrypted_content`（Codex 视为 opaque blob 原样回传），翻译时再注入回前一条 assistant message 的 `reasoning_content`。
+
+```bash
+npm update -g mimo2codex   # 或：git pull && npm run build
+mimo2codex --version       # 确认 >= 0.2.3
+```
+
+受影响模型：MiMo-V2.5-Pro、MiMo-V2.5、MiMo-V2-Pro、MiMo-V2-Omni、MiMo-V2-Flash。DeepSeek V4 系列有同样的要求，项目里早就处理了。
+
+</details>
+
+<details>
 <summary><b>报 <code>Missing environment variable: MIMO2CODEX_KEY</code></b></summary>
 
 你 `config.toml` 还在用老的 `env_key = "MIMO2CODEX_KEY"`，桌面端不读 shell 环境变量。换成 auth.json 方式：把 `env_key = "..."` 改成 `requires_openai_auth = true`，再写 `~/.codex/auth.json` 为 `{"OPENAI_API_KEY": "mimo2codex-local"}`。或者直接 `mimo2codex print-config` 重新拿默认输出粘贴。
@@ -356,9 +381,9 @@ mimo2codex --model ds --verbose
 <details>
 <summary><b>Codex 说"我现在做 X"然后回合就结束了，没真调工具</b></summary>
 
-MiMo 在多步 agentic 编码任务上的弱点——模型把 token 花在"叙述"上不真调工具。mimo2codex 默认强制 `parallel_tool_calls: true`（一回合多个工具调用），通常能缓解。
+**最常见的根因**：prior assistant 轮次 `reasoning_content` 丢失 —— 参考本节最顶上的 troubleshooting 条目（升级到 ≥ 0.2.3）。0.2.2 及以前在某些配置下会静默丢弃跨轮 reasoning，导致 MiMo 多轮工具调用恰好以这种症状退化。
 
-如果还是踩到，**最有效的技巧是改提示词**——用命令式替代"继续"：
+如果你已经在 ≥ 0.2.3 还碰到这个，那就是 MiMo 多步 agentic 编码本身的弱点——模型把 token 花在"叙述"上不真调工具。mimo2codex 默认强制 `parallel_tool_calls: true`（一回合多个工具调用），通常能缓解。最有效的手动救场是**改提示词**——用命令式替代"继续"：
 
 > 不要解释，直接调 apply_patch 写完整文件内容
 

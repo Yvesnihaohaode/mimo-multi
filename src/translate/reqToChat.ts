@@ -506,10 +506,21 @@ function inputItemsToMessages(
       }
       case "reasoning": {
         flushAssistant(out, state);
-        const text = item.summary
-          .filter((s) => s.type === "summary_text")
-          .map((s) => s.text)
-          .join("");
+        // Prefer `encrypted_content` — that's where respToResponses /
+        // streamToSse pin the FULL reasoning trace (Codex echoes it
+        // back verbatim across turns, summary may be empty under
+        // --no-reasoning). Fall back to summary text for compatibility
+        // with reasoning items emitted by other clients / older
+        // mimo2codex versions.
+        let text = "";
+        if (typeof item.encrypted_content === "string" && item.encrypted_content.length > 0) {
+          text = item.encrypted_content;
+        } else {
+          text = item.summary
+            .filter((s) => s.type === "summary_text")
+            .map((s) => s.text)
+            .join("");
+        }
         state.pendingReasoning = text;
         break;
       }

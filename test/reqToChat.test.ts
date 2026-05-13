@@ -788,4 +788,70 @@ describe("reqToChat", () => {
     expect(pathMatch).toBeTruthy();
     expect(existsSync(pathMatch![1])).toBe(true);
   });
+
+  // Regression: under --no-reasoning, respToResponses writes the reasoning
+  // text into `encrypted_content` with an empty `summary`. The next-turn
+  // request from Codex echoes that reasoning item back; reqToChat must
+  // extract from encrypted_content (not summary) so MiMo / DS V4 get the
+  // reasoning_content on the prior assistant message — without this their
+  // tool-calling quality degrades into "narration / free-association"
+  // instead of actual tool calls.
+  it("reasoning item with empty summary + encrypted_content → reasoning_content on assistant message", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "search for cats" }],
+        },
+        {
+          type: "reasoning",
+          summary: [], // hidden from terminal — --no-reasoning case
+          encrypted_content: "I should call the search tool here",
+        } as unknown as ResponsesRequest["input"] extends Array<infer T> ? T : never,
+        {
+          type: "function_call",
+          call_id: "call_1",
+          name: "search",
+          arguments: '{"q":"cats"}',
+        },
+        { type: "function_call_output", call_id: "call_1", output: "5 results" },
+      ],
+    };
+    const chat = reqToChat(req);
+    const assistantWithTool = chat.messages.find((m) => m.tool_calls?.length) as
+      | { role: "assistant"; reasoning_content?: string; tool_calls: unknown[] }
+      | undefined;
+    expect(assistantWithTool).toBeDefined();
+    expect(assistantWithTool!.reasoning_content).toBe("I should call the search tool here");
+  });
+
+  // When BOTH encrypted_content and summary are present, prefer
+  // encrypted_content — it's the canonical full-trace channel; summary may
+  // be truncated by some clients.
+  it("reasoning item with both fields prefers encrypted_content", () => {
+    const req: ResponsesRequest = {
+      model: "mimo-v2.5-pro",
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "x" }] },
+        {
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: "summary version" }],
+          encrypted_content: "full version",
+        } as unknown as ResponsesRequest["input"] extends Array<infer T> ? T : never,
+        {
+          type: "function_call",
+          call_id: "c",
+          name: "f",
+          arguments: "{}",
+        },
+      ],
+    };
+    const chat = reqToChat(req);
+    const a = chat.messages.find((m) => m.tool_calls?.length) as
+      | { reasoning_content?: string }
+      | undefined;
+    expect(a?.reasoning_content).toBe("full version");
+  });
 });

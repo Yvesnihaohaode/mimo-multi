@@ -120,12 +120,18 @@ function openReasoning(sink: SseSink, state: StreamState): void {
       status: "in_progress",
     },
   });
-  emit(sink, state, "response.reasoning_summary_part.added", {
-    item_id: state.activeItemId,
-    output_index: idx,
-    summary_index: 0,
-    part: { type: "summary_text", text: "" },
-  });
+  // Only open the visible summary text slot when reasoning is being
+  // streamed to the user. Under --no-reasoning we still create the item
+  // (so finalizeActive can pin encrypted_content for round-trip) but skip
+  // the summary slot entirely so Codex doesn't render a placeholder.
+  if (state.exposeReasoning) {
+    emit(sink, state, "response.reasoning_summary_part.added", {
+      item_id: state.activeItemId,
+      output_index: idx,
+      summary_index: 0,
+      part: { type: "summary_text", text: "" },
+    });
+  }
 }
 
 function openMessage(sink: SseSink, state: StreamState): void {
@@ -204,23 +210,31 @@ function finalizeActive(sink: SseSink, state: StreamState): void {
   const outputIndex = state.outputIndex - 1;
 
   if (state.activeKind === "reasoning") {
-    emit(sink, state, "response.reasoning_summary_text.done", {
-      item_id: itemId,
-      output_index: outputIndex,
-      summary_index: 0,
-      text: buffer,
-    });
-    emit(sink, state, "response.reasoning_summary_part.done", {
-      item_id: itemId,
-      output_index: outputIndex,
-      summary_index: 0,
-      part: { type: "summary_text", text: buffer },
-    });
+    // Under --no-reasoning we skipped the summary delta events — also
+    // skip the summary .done events here so Codex doesn't suddenly
+    // display the whole reasoning trace at stream end. The full text
+    // still survives the round-trip via `encrypted_content` below.
+    if (state.exposeReasoning) {
+      emit(sink, state, "response.reasoning_summary_text.done", {
+        item_id: itemId,
+        output_index: outputIndex,
+        summary_index: 0,
+        text: buffer,
+      });
+      emit(sink, state, "response.reasoning_summary_part.done", {
+        item_id: itemId,
+        output_index: outputIndex,
+        summary_index: 0,
+        part: { type: "summary_text", text: buffer },
+      });
+    }
     const finalItem: ResponsesOutputItem = {
       id: itemId,
       type: "reasoning",
-      summary: [{ type: "summary_text", text: buffer }],
-      encrypted_content: null,
+      summary: state.exposeReasoning ? [{ type: "summary_text", text: buffer }] : [],
+      // Always pin full reasoning here — see processChunk comment for why
+      // this is required for MiMo multi-turn tool quality.
+      encrypted_content: buffer,
       status: "completed",
     };
     state.finalOutput.push(finalItem);
@@ -310,15 +324,23 @@ function processChunk(sink: SseSink, state: StreamState, chunk: ChatStreamChunk)
   if (!choice) return;
   const delta = choice.delta;
 
-  if (delta.reasoning_content && state.exposeReasoning) {
+  if (delta.reasoning_content) {
+    // ALWAYS buffer reasoning_content — finalizeActive pins it into
+    // `encrypted_content` so Codex echoes it back on the next turn,
+    // which is what MiMo's "passing back reasoning_content" spec requires
+    // for stable multi-turn tool calling. The user-visible streaming
+    // (summary deltas) is gated by exposeReasoning — --no-reasoning hides
+    // it from the terminal but does NOT break the round-trip.
     if (state.activeKind !== "reasoning") openReasoning(sink, state);
     state.activeBuffer += delta.reasoning_content;
-    emit(sink, state, "response.reasoning_summary_text.delta", {
-      item_id: state.activeItemId!,
-      output_index: state.outputIndex - 1,
-      summary_index: 0,
-      delta: delta.reasoning_content,
-    });
+    if (state.exposeReasoning) {
+      emit(sink, state, "response.reasoning_summary_text.delta", {
+        item_id: state.activeItemId!,
+        output_index: state.outputIndex - 1,
+        summary_index: 0,
+        delta: delta.reasoning_content,
+      });
+    }
   }
 
   if (delta.content) {

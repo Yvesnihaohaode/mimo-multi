@@ -63,17 +63,33 @@ describe("respToResponses", () => {
     expect(r.output).toHaveLength(2);
     expect(r.output[0].type).toBe("reasoning");
     expect(r.output[1].type).toBe("message");
-    const reason = r.output[0] as { summary: Array<{ text: string }> };
+    const reason = r.output[0] as {
+      summary: Array<{ text: string }>;
+      encrypted_content: string | null;
+    };
     expect(reason.summary[0].text).toBe("let me think");
+    // encrypted_content always carries the full reasoning trace so MiMo's
+    // "passing back reasoning_content" multi-turn requirement is honored
+    // even when Codex truncates / drops summary text in transit.
+    expect(reason.encrypted_content).toBe("let me think");
   });
 
-  it("with --no-reasoning, reasoning is hidden", () => {
+  it("with --no-reasoning, summary is hidden but encrypted_content preserved for round-trip", () => {
+    // The proxy still emits a reasoning item, but with summary=[] so Codex
+    // shows nothing in the terminal. encrypted_content carries the full
+    // reasoning text — required by MiMo (and DeepSeek V4) to maintain
+    // multi-turn tool-call quality.
     const r = respToResponses(
       makeChat({ content: "answer", reasoning: "internal" }),
       baseReq,
       { exposeReasoning: false }
     );
-    expect(r.output.find((o) => o.type === "reasoning")).toBeUndefined();
+    const reasoningItem = r.output.find((o) => o.type === "reasoning") as
+      | { type: "reasoning"; summary: unknown[]; encrypted_content: string | null }
+      | undefined;
+    expect(reasoningItem).toBeDefined();
+    expect(reasoningItem!.summary).toEqual([]);
+    expect(reasoningItem!.encrypted_content).toBe("internal");
   });
 
   it("tool_calls become function_call items", () => {

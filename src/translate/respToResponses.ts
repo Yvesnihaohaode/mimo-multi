@@ -43,12 +43,23 @@ export function respToResponses(
   const message = choice?.message;
   const output: ResponsesOutputItem[] = [];
 
-  if (opts.exposeReasoning && message?.reasoning_content) {
+  if (message?.reasoning_content) {
+    // Always pin the FULL reasoning text in `encrypted_content` — Codex
+    // treats it as opaque and echoes it back verbatim on the next turn,
+    // which `reqToChat` then re-injects as `reasoning_content` on the prior
+    // assistant message. MiMo's "passing back reasoning_content" spec
+    // requires this for multi-turn tool-call quality (without it the model
+    // tends to "narrate" or free-associate instead of calling tools).
+    // `summary` is the user-visible channel: populated only when the user
+    // wants to see thinking in the terminal (default), empty under
+    // --no-reasoning so we hide it from display but still round-trip.
     output.push({
       type: "reasoning",
       id: newReasoningId(),
-      summary: [{ type: "summary_text", text: message.reasoning_content }],
-      encrypted_content: null,
+      summary: opts.exposeReasoning
+        ? [{ type: "summary_text", text: message.reasoning_content }]
+        : [],
+      encrypted_content: message.reasoning_content,
       status: "completed",
     });
   }

@@ -18,6 +18,8 @@
 
 Local proxy that lets the **latest OpenAI Codex CLI / desktop** talk to virtually any modern LLM. Built-in support for **Xiaomi MiMo V2.5** and **DeepSeek V4 Pro**, plus a **generic provider mechanism** that connects any **OpenAI Chat Completions-compatible** (Qwen / GLM / Kimi / vLLM / Ollama / LM Studio …) or **native Responses API** (OpenAI itself) upstream — no code changes, no re-publish needed. Translates Codex's Responses API ↔ upstream Chat Completions on the fly, per-request routing by `model` field, optional admin web console, runs on `127.0.0.1`.
 
+> 📌 **Heads-up for MiMo users**: per [MiMo's official advisory](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content), every assistant message with `tool_calls` must echo back its original `reasoning_content` on the next turn — otherwise MiMo returns **400** or silently degrades into hallucination (agent rambles instead of calling tools, burning tokens). Codex is on MiMo's list of affected products. **mimo2codex ≥ 0.2.3 handles this round-trip automatically**; older versions and most other Codex-side proxies don't. If you hit the symptoms, [upgrade](#troubleshooting).
+
 ![mimo2codex install + run](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/npminstall.jpg)
 
 ![Admin console · dashboard](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/admin-dashboard.png)
@@ -58,7 +60,7 @@ Conceptually a sibling of [openrouter](https://openrouter.ai), [claude-code-rout
 - ✅ Tool calling — function tools, parallel calls, `local_shell`, `custom`, MCP `namespace`
 - ✅ Web search — translated to MiMo's native `web_search` builtin (requires plugin activation); auto-skipped on DeepSeek
 - ✅ Vision — only `mimo-v2.5` and `mimo-v2-omni`; pro/flash auto-strip images with a placeholder
-- ✅ Reasoning passthrough (with `--no-reasoning` to hide)
+- ✅ Reasoning passthrough + correct **multi-turn `reasoning_content` round-trip** per [MiMo's official spec](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content) (with `--no-reasoning` to hide from terminal — round-trip stays intact)
 - ✅ MiMo host auto-routing — `tp-*` keys → token-plan host, `sk-*` keys → pay-as-you-go host
 - ✅ Local admin web UI at `http://127.0.0.1:8788/admin/` — model catalog, alias mgmt, chat logs, token stats, provider config
 - ✅ sqlite persistence (default `~/.mimo2codex/data.db`, override with `--data-dir`)
@@ -262,6 +264,29 @@ mimo2codex print-cc-switch          # cc-switch paste blocks
 ## Troubleshooting
 
 <details>
+<summary><b>MiMo 400 <code>The reasoning_content in the thinking mode must be passed back</code> / multi-turn tool calls drift into rambling / hallucinated text</b></summary>
+
+Per [MiMo's official advisory](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content), when thinking mode is on (default) and history contains tool calls, every assistant message that carries `tool_calls` MUST also carry its original `reasoning_content` — otherwise the model context becomes inconsistent. Two failure modes:
+
+| Severity | Symptom |
+|---|---|
+| 🔴 **Hard fail** | MiMo returns 400 `"The reasoning_content in the thinking mode must be passed back"`. Codex shows "Provider returned 400" and the conversation stalls. |
+| 🟡 **Soft degrade** | No error, but model "narrates" instead of calling tools, fabricates content unrelated to the prompt (e.g. asked to generate a pet sprite, model outputs movie / pop-culture trivia), or ends turns with "I'll do X" without calling `apply_patch`. Every off-task turn burns 1k-5k tokens. |
+
+Both manifest specifically on **multi-turn tool-calling workflows** (agentic coding, `/hatch`-replacement pet generation, OCR feed-back, web search chains). Codex is on MiMo's published list of affected agent products (alongside Cursor, TRAE, Roo Code, Copilot CLI, etc.).
+
+**Fix**: upgrade to `mimo2codex >= 0.2.3`. Prior versions only stashed reasoning in `summary[].text` and dropped it entirely under `--no-reasoning`; 0.2.3+ also pins the full trace into `encrypted_content` (Codex echoes it back verbatim across turns) and re-injects it as `reasoning_content` on the prior assistant message during translation.
+
+```bash
+npm update -g mimo2codex   # or: git pull && npm run build
+mimo2codex --version       # confirm >= 0.2.3
+```
+
+Affected models: MiMo-V2.5-Pro, MiMo-V2.5, MiMo-V2-Pro, MiMo-V2-Omni, MiMo-V2-Flash. DeepSeek V4 family has the same requirement and was already covered.
+
+</details>
+
+<details>
 <summary><b>Missing environment variable: <code>MIMO2CODEX_KEY</code></b></summary>
 
 Your `config.toml` has the legacy `env_key = "MIMO2CODEX_KEY"` line. Codex desktop doesn't inherit shell env vars. Switch to the auth.json variant: replace `env_key = "..."` with `requires_openai_auth = true` and write `~/.codex/auth.json` with `{"OPENAI_API_KEY": "mimo2codex-local"}`. Or just rerun `mimo2codex print-config` and paste the new default output.
@@ -366,9 +391,9 @@ Usually caused by an unusual Node distribution (e.g., Electron-bundled Node). No
 <details>
 <summary><b>Codex says "I'll do X" then ends the turn without calling any tool</b></summary>
 
-MiMo's known weakness on multi-step agentic coding — the model spends tokens narrating instead of calling tools. mimo2codex defaults `parallel_tool_calls: true` (lets MiMo batch tool calls per turn), which usually mitigates it.
+**Most common cause**: missing `reasoning_content` on prior assistant turns — see the top troubleshooting entry above (upgrade to ≥ 0.2.3). 0.2.2 and earlier silently drop reasoning across turns in some configurations, which makes MiMo's multi-turn tool calling degrade exactly this way.
 
-If you still hit it, the highest-leverage fix is **a more directive prompt** — replace "继续" with something like:
+If you're already on ≥ 0.2.3 and still see it, it's MiMo's known weakness on multi-step agentic coding. mimo2codex defaults `parallel_tool_calls: true` (lets MiMo batch tool calls per turn), which usually mitigates it. The highest-leverage manual fix is **a more directive prompt** — replace "继续" with something like:
 
 > 不要解释，直接调 apply_patch 写完整文件内容
 
