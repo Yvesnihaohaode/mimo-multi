@@ -4,7 +4,8 @@
   <a href="./README.md"><strong>English</strong></a> ·
   <a href="./README.zh.md">简体中文</a> ·
   <a href="./doc/mimoskill.md">mimoskill</a> ·
-  <a href="./doc/generic-providers.md">Generic Providers</a>
+  <a href="./doc/generic-providers.md">Generic Providers</a> ·
+  <a href="./doc/codex-enable.md">Codex Enable</a>
 </p>
 
 <p align="center">
@@ -20,6 +21,8 @@ Local proxy that lets the **latest OpenAI Codex CLI / desktop** talk to virtuall
 
 > 📌 **Heads-up for MiMo users**: per [MiMo's official advisory](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content), every assistant message with `tool_calls` must echo back its original `reasoning_content` on the next turn — otherwise MiMo returns **400** or silently degrades into hallucination (agent rambles instead of calling tools, burning tokens). Codex is on MiMo's list of affected products. **mimo2codex ≥ 0.2.3 handles this round-trip automatically**; older versions and most other Codex-side proxies don't. If you hit the symptoms, [upgrade](#troubleshooting).
 
+> 🆕 **New in v0.2.6 (2026-05-14) — "Codex Enable" page**: one-click write of `~/.codex/auth.json` + `config.toml` from the admin webui — a **cc-switch replacement** for Codex-only users. Comes with a "runtime override" mode (swap upstream models without restarting Codex). Old files are auto-backed-up, and **the first backup that captures your real OpenAI auth.json is permanently preserved** — switch models 100 times and you can still roll back to your original Codex config. See [doc/codex-enable.md](./doc/codex-enable.md).
+
 ![mimo2codex install + run](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/npminstall.jpg)
 
 ![Admin console · dashboard](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/admin-dashboard.png)
@@ -30,6 +33,7 @@ Local proxy that lets the **latest OpenAI Codex CLI / desktop** talk to virtuall
 - [What works](#what-works) — feature matrix
 - [Install — pick one](#install--pick-one) — npm / curl / clone
 - [Use](#use) — get a key, start the proxy, configure Codex
+- [Codex Enable — one-click model switching in the webui (v0.2.6, replaces cc-switch)](#codex-enable--one-click-model-switching-in-the-webui-v026-replaces-cc-switch)
 - [Use with cc-switch](#use-with-cc-switch)
 - [Admin console](#admin-console) — dashboard, logs, models, settings
   - [Providers and model ids](#providers-and-model-ids)
@@ -42,7 +46,7 @@ Local proxy that lets the **latest OpenAI Codex CLI / desktop** talk to virtuall
 - [Develop](#develop)
 - [License](#license)
 
-**Detailed guides:** [Generic providers](./doc/generic-providers.md) · [mimoskill](./doc/mimoskill.md)
+**Detailed guides:** [Codex Enable](./doc/codex-enable.md) · [Generic providers](./doc/generic-providers.md) · [mimoskill](./doc/mimoskill.md)
 
 ## Why
 
@@ -155,7 +159,24 @@ Pet, tool calls, reasoning, multi-turn — all just work. Pass `--no-reasoning` 
 
 > If Codex desktop ignores the new `auth.json`, **fully quit it** (system tray → Quit) and relaunch.
 
+## Codex Enable — one-click model switching in the webui (v0.2.6, replaces cc-switch)
+
+> Added **2026-05-14**, available since **v0.2.6**. Full details: [doc/codex-enable.md](./doc/codex-enable.md)
+
+If you only use Codex (not Claude Code / Gemini CLI etc.), you can **drop the cc-switch dependency entirely**. The admin webui now has a sidebar tab **"Codex 启用"** that does what cc-switch did — and a few things it didn't:
+
+- **One-click file write** — click "Write files & enable" on any model row → server atomically writes `~/.codex/auth.json` + `~/.codex/config.toml`. Fully quit + relaunch Codex to take effect.
+- **Runtime override** — click "Runtime override only" → store the active (provider, model) in mimo2codex's settings, route through Pass 0 of `selectProvider`. **No Codex restart needed.**
+- **Your original Codex config is permanently preserved** 🔒 — the first backup taken when overwriting a foreign `auth.json` (your real OpenAI login, etc.) is auto-tagged `.preserve` and **never rolls out** of the keep-window. Switch 100 times and that original is still one click away.
+- **Every switch is backed up** — regular snapshots rotate "keep newest 10"; the backups table shows each snapshot's captured `provider/model` so you can tell them apart at a glance.
+- **Symmetric half-pair restore** — if you only had `auth.json` and no customized `config.toml` before mimo2codex, restoring deletes the `config.toml` we created, returning the directory to its real prior state.
+- **Manual delete** — each row has a delete button; 🔒 preserved rows require an extra confirm + backend `?force=1`.
+
+Mechanism comparison, REST API, edge behavior, troubleshooting → [doc/codex-enable.md](./doc/codex-enable.md).
+
 ## Use with cc-switch
+
+If you **also use Claude Code / Gemini CLI** etc., cc-switch is still the right cross-tool switching hub; mimo2codex coexists fine (both write the same `~/.codex/`, no conflict).
 
 [cc-switch](https://github.com/farion1231/cc-switch) is a desktop app for switching between Claude Code / Codex / OpenCode providers in one click. Its built-in Codex preset list doesn't include MiMo, but mimo2codex slots in as a custom provider:
 

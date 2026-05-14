@@ -4,7 +4,8 @@
   <a href="./README.md">English</a> ·
   <a href="./README.zh.md"><strong>简体中文</strong></a> ·
   <a href="./doc/mimoskill.zh.md">mimoskill</a> ·
-  <a href="./doc/generic-providers.zh.md">通用 Provider</a>
+  <a href="./doc/generic-providers.zh.md">通用 Provider</a> ·
+  <a href="./doc/codex-enable.zh.md">Codex 启用</a>
 </p>
 
 <p align="center">
@@ -20,6 +21,8 @@
 
 > 📌 **MiMo 用户重要提示**：按 [MiMo 官方公告](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content)，**每一条带 `tool_calls` 的 assistant 消息在后续轮次必须回传原始 `reasoning_content`**，否则 MiMo 直接 **400** 或软退化成幻觉（agent 不调工具、自言自语、烧 token）。Codex 在公告受影响产品清单里。**mimo2codex ≥ 0.2.3 自动处理这个回传**；老版本和大部分 Codex 侧的代理都不处理。碰到上述症状请[升级](#故障排查)。
 
+> 🆕 **v0.2.6（2026-05-14）新增「Codex 启用」**：admin webui 一键写入 `~/.codex/auth.json` + `config.toml`，**替代 cc-switch**；同时提供"运行时覆盖"（无需重启 Codex 即可换上游 model）。原文件自动备份，**首次覆盖外部 auth.json 时的备份永久保留**——切换 100 次模型也找得回你原来的真 Codex 配置。详见 [doc/codex-enable.zh.md](./doc/codex-enable.zh.md)。
+
 ![mimo2codex 安装与启动](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/npminstall.jpg)
 
 ![Admin 控制台 · 概览](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/admin-dashboard.png)
@@ -30,6 +33,7 @@
 - [支持](#支持) —— 能力对照表
 - [安装——任选一种](#安装任选一种) —— npm / 一键脚本 / 手动构建
 - [使用](#使用) —— 拿 key、启动代理、配置 Codex
+- [Codex 启用 — webui 一键切模型（v0.2.6 新增，替代 cc-switch）](#codex-启用--webui-一键切模型v026-新增替代-cc-switch)
 - [配合 cc-switch 使用](#配合-cc-switch-使用)
 - [Admin 控制台](#admin-控制台) —— 概览 / 日志 / 模型 / 设置
   - [Provider 与模型 ID](#provider-与模型-id)
@@ -41,7 +45,7 @@
 - [开发](#开发)
 - [许可证](#许可证)
 
-**详细文档：** [通用 provider](./doc/generic-providers.zh.md) · [mimoskill](./doc/mimoskill.zh.md)
+**详细文档：** [Codex 启用](./doc/codex-enable.zh.md) · [通用 provider](./doc/generic-providers.zh.md) · [mimoskill](./doc/mimoskill.zh.md)
 
 ## 解决什么问题
 
@@ -154,7 +158,24 @@ codex
 
 > 桌面端如果没读到新 `auth.json`，**完全退出后重启**（托盘 → 退出，不只是关窗口）。
 
+## Codex 启用 — webui 一键切模型（v0.2.6 新增，替代 cc-switch）
+
+> 新增于 **2026-05-14**，起始版本 **v0.2.6**。详细文档：[doc/codex-enable.zh.md](./doc/codex-enable.zh.md)
+
+如果你只用 Codex（不用 Claude Code / Gemini CLI 等），可以**不再依赖 cc-switch**。admin webui 侧栏多了一个「**Codex 启用**」页签，直接做掉 cc-switch 替你做的事，并补全它没做的：
+
+- **一键写文件**：点任一行模型的「写入文件并启用」→ 服务端原子写入 `~/.codex/auth.json` + `~/.codex/config.toml`，完全退出重启 Codex 即生效。
+- **运行时覆盖**：点「仅运行时覆盖」→ 把激活的 (provider, model) 存到内部 settings，`selectProvider` 路由前优先用它，**无需重启 Codex**。
+- **原始 Codex 配置永不丢** 🔒：首次覆盖你真 OpenAI 登录的那份 auth.json 时，备份自动打 `.preserve` 标记，**永远不会被后续切换轮转清理**。切 100 次模型，那份原始配置仍在备份表里，一键恢复。
+- **每次切换都备份**：普通快照按"最近 10 份"轮转，可以回到任意一份历史配置；备份表里直接显示每份当时的 `provider/model`，肉眼区分。
+- **半残 pair 对称恢复**：如果你原本只有 `auth.json` 没有 `config.toml`（很多人不自定义），恢复时会顺手删掉我们建的 `config.toml`，让 `~/.codex/` 真正回到 apply 前状态。
+- **手动删除**：每行有「删除」按钮，🔒 保留型需要二次确认+ `?force=1` 才能放行。
+
+更详细的机制对比、API、边界行为、故障排查 → [doc/codex-enable.zh.md](./doc/codex-enable.zh.md)。
+
 ## 配合 cc-switch 使用
+
+如果你**同时用 Claude Code / Gemini CLI 等其他 CLI 工具**，仍然推荐用 cc-switch 做统一切换中心；mimo2codex 也兼容（两个工具都写同一个 `~/.codex/`，互不打架）。
 
 [cc-switch](https://github.com/farion1231/cc-switch) 是个跨平台桌面 App，专门管理 Claude Code / Codex / OpenCode / OpenClaw / Gemini CLI 的多供应商切换。它的 Codex 预设里没 MiMo（因为 MiMo 不支持 Responses API），mimo2codex 当桥用「自定义供应商」加进去：
 
