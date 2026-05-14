@@ -13,9 +13,13 @@ const WEB_SEARCH_HINT =
   "doesn't include the plugin, this request will keep failing until activated.";
 
 // Per https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/multimodal-understanding/image-understanding,
-// only `mimo-v2.5`, `mimo-v2.5[1m]` and `mimo-v2-omni` accept image input.
-// The pro/flash variants do not — they return 404 "No endpoints found that
-// support image input" if sent images.
+// only `mimo-v2.5` and `mimo-v2-omni` accept image input. The pro/flash
+// variants do not — they return 404 "No endpoints found that support image
+// input" if sent images.
+//
+// maxOutputTokens defaults match
+// https://platform.xiaomimimo.com/docs/zh-CN/api/chat/openai-api `max_completion_tokens`:
+//   pro / v2-pro: 131072  |  v2.5 / omni: 32768  |  flash: 65536
 const BUILTIN_MODELS: readonly ProviderModel[] = [
   {
     id: "mimo-v2.5-pro",
@@ -24,14 +28,16 @@ const BUILTIN_MODELS: readonly ProviderModel[] = [
     supportsReasoning: true,
     supportsWebSearch: true,
     contextWindow: 128_000,
+    maxOutputTokens: 131_072,
   },
   {
-    id: "mimo-v2.5-pro[1m]",
-    displayName: "MiMo V2.5 Pro (1M)",
+    id: "mimo-v2-pro",
+    displayName: "MiMo V2 Pro",
     supportsImages: false,
     supportsReasoning: true,
     supportsWebSearch: true,
-    contextWindow: 1_000_000,
+    contextWindow: 128_000,
+    maxOutputTokens: 131_072,
   },
   {
     id: "mimo-v2.5",
@@ -40,14 +46,7 @@ const BUILTIN_MODELS: readonly ProviderModel[] = [
     supportsReasoning: true,
     supportsWebSearch: true,
     contextWindow: 128_000,
-  },
-  {
-    id: "mimo-v2.5[1m]",
-    displayName: "MiMo V2.5 (Vision, 1M)",
-    supportsImages: true,
-    supportsReasoning: true,
-    supportsWebSearch: true,
-    contextWindow: 1_000_000,
+    maxOutputTokens: 32_768,
   },
   {
     id: "mimo-v2-omni",
@@ -56,12 +55,14 @@ const BUILTIN_MODELS: readonly ProviderModel[] = [
     supportsReasoning: true,
     supportsWebSearch: true,
     contextWindow: 128_000,
+    maxOutputTokens: 32_768,
   },
   {
     id: "mimo-v2-flash",
     displayName: "MiMo V2 Flash",
     supportsImages: false,
     contextWindow: 128_000,
+    maxOutputTokens: 65_536,
   },
 ];
 
@@ -74,6 +75,36 @@ const TOKEN_PLAN_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1";
 
 function isTokenPlanRuntime(apiKey: string, baseUrl: string): boolean {
   return /token-plan/i.test(baseUrl) || apiKey.startsWith("tp-");
+}
+
+// Models whose upstream default for `thinking` is "disabled" — we leave the
+// field off the request so the upstream-side default kicks in.
+const MIMO_THINKING_DEFAULT_DISABLED = new Set(["mimo-v2-flash"]);
+
+// Models that, per official docs, ignore custom `temperature` while in
+// thinking mode (the upstream forces it to its recommended 1.0). We strip
+// the field client-side so the request matches the eventual behavior.
+const MIMO_THINKING_FIXES_TEMPERATURE = new Set(["mimo-v2.5-pro", "mimo-v2.5"]);
+
+// Normalize a chat-completions body for MiMo upstream per
+// https://platform.xiaomimimo.com/docs/zh-CN/api/chat/openai-api :
+//   - inject thinking default by model id (flash → leave off; others → enabled)
+//   - drop `temperature` on mimo-v2.5-pro / mimo-v2.5 in thinking mode
+//   - drop `tool_choice` when set to a non-"auto" value (upstream removes it)
+function normalizeMimoBody(chat: ChatRequest, modelId: string): ChatRequest {
+  if (chat.thinking === undefined && !MIMO_THINKING_DEFAULT_DISABLED.has(modelId)) {
+    chat.thinking = { type: "enabled" };
+  }
+  if (
+    chat.thinking?.type === "enabled" &&
+    MIMO_THINKING_FIXES_TEMPERATURE.has(modelId)
+  ) {
+    delete chat.temperature;
+  }
+  if (chat.tool_choice && chat.tool_choice !== "auto") {
+    delete chat.tool_choice;
+  }
+  return chat;
 }
 
 export const mimo: Provider = {
@@ -108,16 +139,17 @@ export const mimo: Provider = {
     //
     // Token-plan accounts don't have the Web Search Plugin, so we proactively
     // strip web_search before forwarding (avoids 400 "webSearchEnabled is false").
-    return reqToChat(req, {
+    const chat = reqToChat(req, {
       forceParallelToolCalls: true,
       enableWebSearch: !ctx.runtime.flags.isTokenPlan,
       imageDropDir: ctx.dataDir,
     });
+    return normalizeMimoBody(chat, req.model);
   },
 
   preprocessChat(req: ChatRequest, _ctx: PreprocessCtx): ChatRequest {
     // Chat passthrough: forward verbatim. MiMo is itself Chat-Completions-native.
-    return req;
+    return normalizeMimoBody(req, req.model);
   },
 
   enhanceError({ status, snippet }): ProviderEnhancedError | null {

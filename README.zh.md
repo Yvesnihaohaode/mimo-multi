@@ -242,6 +242,7 @@ mimo2codex --model generic
 | `--no-admin` | `MIMO2CODEX_NO_ADMIN=1` | 关 | 关闭 admin UI 与 sqlite 日志 |
 | `--no-reasoning` | `MIMO2CODEX_NO_REASONING=1` | 关 | 终端不显示思考（多轮工具调用仍回填给上游） |
 | `--verbose`, `-v` | `MIMO2CODEX_VERBOSE=1` | 关 | 打印每次翻译的请求体 |
+| _仅环境变量_ | `MIMO2CODEX_CONTEXT_OVERFLOW_MODE` | `friendly` | 上游 400 且识别为上下文超限时的处理：`friendly`（默认）重写为中英文友好提示并引导 `/compact`；`passthrough` 透传原始错误 |
 
 子命令：
 
@@ -491,6 +492,24 @@ npm run build:all    # 一把全打
 ```
 
 把本地代码注册成全局 `mimo2codex` 命令：`npm run build:all && npm link`。
+
+## 更新日志
+
+### 0.2.5-beta.0（beta 通道）
+
+本轮按 MiMo / DeepSeek **官方文档**做了一次系统对齐，外加一个被社区报告的 DeepSeek 工具调用 400 修复。没有破坏性变更。安装：`npm i -g mimo2codex@beta`。
+
+- **修复 DeepSeek 多轮工具调用 400**：`"An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. (insufficient tool messages following tool_calls message)"`。根因是翻译时 `reasoning` 项被无条件 flush，会在 `assistant(tool_calls)` 和对应的 `tool` 消息之间塞一条 `assistant(reasoning_content)`，破坏 Chat Completions 协议的"tool_calls 必须紧跟 tool 消息"约束。现在 reasoning 会被折叠到同一条 assistant 消息里。同时加了一道防御：若上游历史里某个 `tool_call_id` 找不到对应的 `function_call_output`（取消的轮次、丢失的输出等），自动补一条占位 tool 消息，保证发出的 body 始终结构合法。
+- **DeepSeek 思考模式恢复**：之前 `thinking` 字段在 deepseek provider 里被静默删掉，等于没人能开思考模式；现在按官方文档默认注入 `thinking: {type: "enabled"}` + `reasoning_effort: "high"`。客户端如显式传了值则尊重不覆盖。
+- **DeepSeek 思考模式下剥除无效参数**：`temperature` / `top_p` / `presence_penalty` / `frequency_penalty` 在思考模式下被上游忽略，提前剥掉以免误导。
+- **MiMo `mimo-v2-pro` 补入 catalog**（v2-pro，不带 `.5`），官方 OpenAI API 文档列在 model 允许值里但之前没收录。
+- **MiMo `thinking` 默认值按模型区分**：`mimo-v2-flash` 上游默认 disabled（不再无脑注入），`mimo-v2.5-pro` / `mimo-v2.5` / `mimo-v2-pro` / `mimo-v2-omni` 缺省注入 `enabled`。
+- **MiMo `mimo-v2.5-pro` / `mimo-v2.5` 思考模式下剥除 `temperature`**（官方说会被强制 1.0）。
+- **MiMo `tool_choice` 非 `auto` 值剥除**（官方说后端会移除）。
+- **MiMo catalog 补 `maxOutputTokens`**：pro / v2-pro = 131072，v2.5 / omni = 32768，flash = 65536。print-config 现在能输出 `model_max_output_tokens`。
+- DeepSeek `defaultBaseUrl` **保留为 `https://api.deepseek.com/v1` 不动**（官方示例不带 /v1，但带也能用，避免回归风险）。
+
+测试通过后会发布 `0.2.5` 正式版（`npm dist-tag` 切换到 latest）。
 
 ## 许可证
 

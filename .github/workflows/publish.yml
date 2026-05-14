@@ -5,6 +5,21 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: 'npm dist-tag (auto = pick from semver pre-release suffix; otherwise "latest" / "beta" / "next" / etc.)'
+        required: false
+        default: 'auto'
+        type: string
+      prerelease:
+        description: 'Mark GitHub Release as pre-release? (auto = same rule as dist_tag)'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - 'true'
+          - 'false'
 
 permissions:
   contents: write   # `gh release create` needs this; was `read` before adding the GitHub Release step.
@@ -48,6 +63,60 @@ jobs:
             exit 1
           fi
 
+      # Decide the npm dist-tag and whether this is a GitHub pre-release.
+      #
+      # Default behavior (dist_tag input = "auto"):
+      #   - Version contains a SemVer pre-release suffix (e.g. 0.2.5-beta.0,
+      #     0.3.0-alpha.1, 1.0.0-rc.2) → use the identifier (beta/alpha/rc/...)
+      #     as the dist-tag, AND mark the GitHub Release as prerelease.
+      #   - Version is plain (e.g. 0.2.5)                  → dist-tag "latest",
+      #     GitHub Release is a regular (non-pre) release.
+      #
+      # Manual override via workflow_dispatch:
+      #   - dist_tag: any non-"auto" string (latest, beta, next, canary, ...)
+      #   - prerelease: "auto" | "true" | "false"
+      - name: Compute npm dist-tag and prerelease flag
+        id: meta
+        run: |
+          set -e
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          DIST_TAG_INPUT="${{ github.event.inputs.dist_tag }}"
+          PRERELEASE_INPUT="${{ github.event.inputs.prerelease }}"
+
+          # Detect SemVer pre-release: anything after the first `-` in the
+          # version string (the part before any `+` build metadata).
+          #   0.2.5-beta.0  → PRE_ID=beta, IS_PRE=true
+          #   0.3.0-alpha.1 → PRE_ID=alpha
+          #   0.2.5         → PRE_ID="",  IS_PRE=false
+          if [[ "$PKG_VERSION" == *-* ]]; then
+            PRE_PART="${PKG_VERSION#*-}"
+            PRE_PART="${PRE_PART%%+*}"
+            PRE_ID="${PRE_PART%%.*}"
+            DETECTED_TAG="${PRE_ID:-next}"
+            DETECTED_PRE=true
+          else
+            DETECTED_TAG=latest
+            DETECTED_PRE=false
+          fi
+
+          # Apply manual overrides if provided.
+          if [ -n "$DIST_TAG_INPUT" ] && [ "$DIST_TAG_INPUT" != "auto" ]; then
+            DIST_TAG="$DIST_TAG_INPUT"
+          else
+            DIST_TAG="$DETECTED_TAG"
+          fi
+
+          case "$PRERELEASE_INPUT" in
+            true)  IS_PRERELEASE=true ;;
+            false) IS_PRERELEASE=false ;;
+            *)     IS_PRERELEASE="$DETECTED_PRE" ;;
+          esac
+
+          echo "version=$PKG_VERSION"            >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$DIST_TAG"              >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE"    >> "$GITHUB_OUTPUT"
+          echo "::notice::Publishing $PKG_VERSION → npm dist-tag '$DIST_TAG' (prerelease=$IS_PRERELEASE)"
+
       # Run the same build-all + tests we expect prepublishOnly to run, so any
       # failure (frontend build, type errors, etc.) surfaces before we hit
       # `npm publish` and consumes the version slot. `npm publish` will still
@@ -55,7 +124,7 @@ jobs:
       - run: npm run build:all
       - run: npm test
 
-      - run: npm publish --provenance --access public
+      - run: npm publish --tag "${{ steps.meta.outputs.dist_tag }}" --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -64,6 +133,8 @@ jobs:
       # ship. Title comes from the tag's annotation subject (e.g. the message
       # `scripts/release.mjs` writes — "0.1.17 - [fix] xxx"). Body is auto
       # generated from commits between this tag and the previous release.
+      # `--prerelease` is added when the version is a SemVer pre-release so
+      # the GitHub UI shows "Pre-release" instead of "Latest".
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -72,7 +143,8 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           TITLE=$(git tag -l --format='%(contents:subject)' "$TAG")
           if [ -z "$TITLE" ]; then TITLE="$TAG"; fi
-          gh release create "$TAG" \
-            --verify-tag \
-            --title "$TITLE" \
-            --generate-notes
+          ARGS=( "$TAG" --verify-tag --title "$TITLE" --generate-notes )
+          if [ "${{ steps.meta.outputs.is_prerelease }}" = "true" ]; then
+            ARGS+=( --prerelease )
+          fi
+          gh release create "${ARGS[@]}"

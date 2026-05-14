@@ -1,6 +1,7 @@
 import { byShortcut, isProviderId, PROVIDER_LIST, PROVIDERS } from "./providers/registry.js";
 import type { Provider, ProviderId, ProviderRuntime } from "./providers/types.js";
 import { resolveDataDir } from "./db/dataDir.js";
+import type { ContextOverflowMode } from "./upstream/openaiCompatClient.js";
 
 // Documentation URLs surfaced in "missing API key" errors. Built-ins are
 // hardcoded here so error messages stay user-friendly; generic providers
@@ -25,6 +26,11 @@ export interface Config {
   isTokenPlan: boolean;
   dataDir: string;
   adminEnabled: boolean;
+  // How to render upstream 400s identified as "context window exceeded".
+  // "friendly" (default): rewrite to a bilingual hint that points users at
+  // codex's /compact command. "passthrough": forward the raw upstream error.
+  // Controlled via MIMO2CODEX_CONTEXT_OVERFLOW_MODE.
+  contextOverflowMode: ContextOverflowMode;
 }
 
 const DEFAULTS = {
@@ -212,6 +218,10 @@ export function buildConfig(parsed: ParsedArgs, env: NodeJS.ProcessEnv, version:
       : true;
   const dataDir = adminEnabled ? resolveDataDir(parsed.dataDir, env) : "";
 
+  const overflowEnv = env.MIMO2CODEX_CONTEXT_OVERFLOW_MODE?.toLowerCase();
+  const contextOverflowMode: ContextOverflowMode =
+    overflowEnv === "passthrough" ? "passthrough" : "friendly";
+
   return {
     host: parsed.host ?? env.MIMO2CODEX_HOST ?? DEFAULTS.host,
     port: parsed.port ?? portFromEnv ?? DEFAULTS.port,
@@ -225,5 +235,6 @@ export function buildConfig(parsed: ParsedArgs, env: NodeJS.ProcessEnv, version:
     isTokenPlan: !!defaultRuntime.flags.isTokenPlan,
     dataDir,
     adminEnabled,
+    contextOverflowMode,
   };
 }

@@ -32,6 +32,7 @@ const cfg: Config = {
   isTokenPlan: false,
   dataDir: "",
   adminEnabled: true,
+  contextOverflowMode: "friendly",
 };
 
 beforeEach(async () => {
@@ -102,7 +103,6 @@ describe("admin REST", () => {
     // `mimo-v2.5-pro` (which would 404 on image input).
     const v25 = models.find((m) => m.upstream_id === "mimo-v2.5");
     expect(v25?.supports_images).toBe(1);
-    expect(models.find((m) => m.upstream_id === "mimo-v2.5[1m]")?.supports_images).toBe(1);
     expect(models.find((m) => m.upstream_id === "mimo-v2-omni")?.supports_images).toBe(1);
     // pro/flash must remain non-vision
     expect(models.find((m) => m.upstream_id === "mimo-v2.5-pro")?.supports_images).toBe(0);

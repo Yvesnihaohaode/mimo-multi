@@ -61,16 +61,19 @@ export const deepseek: Provider = {
   },
 
   preprocessResponses(req: ResponsesRequest, ctx: PreprocessCtx): ChatRequest {
-    // DeepSeek is OpenAI Chat Completions compatible. No `thinking` field, no
-    // `web_search` builtin (drop those tools), no MiMo-style force-parallel
-    // override (respect the client's value).
+    // DeepSeek is OpenAI Chat Completions compatible. No `web_search` builtin
+    // (drop those tools), no MiMo-style force-parallel override (respect the
+    // client's value).
     const chat = reqToChat(req, {
       forceParallelToolCalls: false,
       enableWebSearch: false,
       imageDropDir: ctx.dataDir,
     });
-    delete chat.thinking;
+    // `enable_thinking` is a MiMo-only legacy field reqToChat sometimes emits;
+    // DeepSeek doesn't recognize it. The structured `thinking: {type: ...}`
+    // field IS what DeepSeek wants and is preserved below.
     delete chat.enable_thinking;
+    normalizeDeepseekBody(chat);
     // The V4 family REQUIRES `reasoning_content` to be echoed back on every
     // prior assistant message in thinking mode (400: "The reasoning_content
     // in the thinking mode must be passed back to the API"). reqToChat
@@ -85,8 +88,8 @@ export const deepseek: Provider = {
 
   preprocessChat(req: ChatRequest, _ctx: PreprocessCtx): ChatRequest {
     const out = { ...req };
-    delete out.thinking;
     delete out.enable_thinking;
+    normalizeDeepseekBody(out);
     if (isLegacyR1Model(out.model)) {
       out.messages = out.messages.map(cloneWithoutReasoning);
     }
@@ -104,6 +107,29 @@ export const deepseek: Provider = {
 // thinking mode is on. So strip only for R1.
 function isLegacyR1Model(model: string): boolean {
   return model === "deepseek-reasoner";
+}
+
+// Per https://api-docs.deepseek.com/zh-cn/guides/thinking_mode :
+//   - `thinking: {type: "enabled"|"disabled"}` goes in the request body
+//   - `reasoning_effort` defaults to "high" for normal requests (Claude Code /
+//     OpenCode-style agents auto-promote to "max"); we conservatively pick
+//     "high" for codex.
+//   - In thinking mode, `temperature` / `top_p` / `presence_penalty` /
+//     `frequency_penalty` are silently ignored upstream; strip them client-side
+//     so the request matches the eventual behavior.
+function normalizeDeepseekBody(chat: ChatRequest): void {
+  if (chat.thinking === undefined) {
+    chat.thinking = { type: "enabled" };
+  }
+  if (chat.reasoning_effort === undefined) {
+    chat.reasoning_effort = "high";
+  }
+  if (chat.thinking?.type === "enabled") {
+    delete chat.temperature;
+    delete chat.top_p;
+    delete chat.presence_penalty;
+    delete chat.frequency_penalty;
+  }
 }
 
 function cloneWithoutReasoning(m: ChatRequest["messages"][number]): ChatRequest["messages"][number] {

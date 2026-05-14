@@ -170,21 +170,73 @@ Avoid republishing the same version — npm intentionally won't let you (it woul
 
 ---
 
-## Tagging beta / next releases
+## Tagging beta / next releases (recommended: GitHub workflow)
 
-For pre-release versions:
+The `.github/workflows/publish.yml` automation **detects pre-release versions from SemVer** and picks the right npm dist-tag for you. You don't need to remember `--tag beta`.
 
-```bash
-# Tag a 0.2.0-beta.1 release without making it the default install
-npm version 0.2.0-beta.1
-npm publish --tag beta
+### Flow
 
-# Users who want the beta:
-npm install -g mimo2codex@beta
+1. **Cut a beta locally:**
 
-# Promote later by retagging:
-npm dist-tag add mimo2codex@0.2.0-beta.1 latest
-```
+   ```bash
+   # First beta off a stable base (0.2.4 → 0.2.5-beta.0):
+   #   first run `npm version prepatch --preid beta --no-git-tag-version`
+   #   then commit + tag manually, OR use `npm run release:beta` AFTER
+   #   bumping to a prerelease state once.
+   #
+   # Subsequent betas (0.2.5-beta.0 → 0.2.5-beta.1):
+   pnpm release:beta              # increments prerelease counter + commit + tag + push
+   ```
+
+   `release:beta` runs `node scripts/release.mjs prerelease --preid beta` —
+   semver-correct, doesn't fight `release:patch` (which would strip the
+   prerelease and go straight to stable).
+
+2. **Workflow auto-detects the `-beta.0` suffix** and publishes to npm with `dist-tag = beta`. The corresponding GitHub Release is marked **Pre-release**.
+
+   - Version → dist-tag mapping (auto):
+     - `0.2.5-beta.0`  → `beta`
+     - `0.2.5-alpha.3` → `alpha`
+     - `0.3.0-rc.1`    → `rc`
+     - `0.2.5`         → `latest`
+
+3. **Users install** the beta with:
+
+   ```bash
+   npm i -g mimo2codex@beta
+   ```
+
+   `npm i -g mimo2codex` (no `@beta`) still gets the latest stable.
+
+4. **Promote to latest** when ready, two options:
+
+   - **(A) Cut a new stable tag** (most common — there's been more work since the beta):
+
+     ```bash
+     npm version 0.2.5
+     git push --follow-tags
+     ```
+
+     Workflow auto-picks `dist-tag = latest` and a regular GitHub Release.
+
+   - **(B) Promote the exact beta artifact** without republishing (when 0.2.5-beta.0 IS what you want shipped as 0.2.5 stable — same bits, same tarball):
+
+     GitHub → **Actions → "Promote npm dist-tag" → Run workflow**:
+
+     - `version`: `0.2.5-beta.0`
+     - `target_tag`: `latest`
+     - `remove_old_tag`: `beta` (optional — clears the stale beta pointer)
+
+     Runs `npm dist-tag add mimo2codex@0.2.5-beta.0 latest` server-side using the repo's `NPM_TOKEN`. No 2FA prompt.
+
+### Manual overrides (workflow_dispatch on publish.yml)
+
+You can run `publish.yml` manually with overrides if the auto detection is wrong for a specific case:
+
+- `dist_tag`: defaults to `auto`. Force `latest` / `beta` / `next` / `canary` / etc.
+- `prerelease`: defaults to `auto`. Force `true` / `false` for the GitHub Release flag.
+
+Note: `workflow_dispatch` runs against the default branch — version in `package.json` at that point is what gets published. Usually you tag first, then dispatch on the tag ref via Actions UI.
 
 ---
 

@@ -1,0 +1,68 @@
+name: Promote npm dist-tag
+
+# Re-point an existing published version to a different dist-tag without
+# republishing. Use this to promote a beta to latest once it's been tested:
+#
+#   Actions → "Promote npm dist-tag" → Run workflow
+#   version: 0.2.5-beta.0    (already on npm under dist-tag "beta")
+#   target_tag: latest
+#
+# Equivalent to `npm dist-tag add mimo2codex@0.2.5-beta.0 latest` run from
+# a maintainer's machine — but doesn't need 2FA/OTP locally, uses the same
+# NPM_TOKEN the publish workflow uses.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Published version to retag (e.g. 0.2.5-beta.0)'
+        required: true
+        type: string
+      target_tag:
+        description: 'Target dist-tag (e.g. latest, beta, next)'
+        required: true
+        default: 'latest'
+        type: string
+      remove_old_tag:
+        description: 'Also remove a now-stale dist-tag afterwards (blank = skip)'
+        required: false
+        type: string
+
+permissions:
+  id-token: write   # not strictly needed for dist-tag but kept consistent with publish.yml
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Confirm version exists on npm
+        run: |
+          set -e
+          V="${{ github.event.inputs.version }}"
+          if ! npm view "mimo2codex@$V" version >/dev/null 2>&1; then
+            echo "::error::mimo2codex@$V is not published — nothing to retag"
+            exit 1
+          fi
+
+      - name: Apply target dist-tag
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm dist-tag add "mimo2codex@${{ github.event.inputs.version }}" "${{ github.event.inputs.target_tag }}"
+          echo "::notice::mimo2codex@${{ github.event.inputs.version }} is now also dist-tag '${{ github.event.inputs.target_tag }}'"
+
+      - name: Remove stale dist-tag (optional)
+        if: github.event.inputs.remove_old_tag != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm dist-tag rm mimo2codex "${{ github.event.inputs.remove_old_tag }}" || \
+            echo "::warning::dist-tag '${{ github.event.inputs.remove_old_tag }}' was not present"
+
+      - name: Show resulting dist-tags
+        run: npm view mimo2codex dist-tags

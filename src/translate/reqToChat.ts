@@ -56,12 +56,10 @@ function materializeStrippedImage(imageUrl: string, dropDir?: string): string | 
 
 // Per MiMo docs (https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/multimodal-understanding/image-understanding),
 // only `mimo-v2.5` and `mimo-v2-omni` (and *-omni* variants) accept image
-// input. The other v2.5 variants (mimo-v2.5-pro, mimo-v2.5-pro[1m],
-// mimo-v2-flash, …) return 404 "No endpoints found that support image input"
-// when given image_url parts.
+// input. The other v2.5 variants (mimo-v2.5-pro, mimo-v2-flash, …) return
+// 404 "No endpoints found that support image input" when given image_url parts.
 function modelSupportsImages(model: string): boolean {
-  // Strip the optional context-window suffix like [1m]
-  const base = model.replace(/\[[^\]]*\]$/, "").toLowerCase();
+  const base = model.toLowerCase();
   if (base.includes("omni")) return true;
   if (base === "mimo-v2.5") return true;
   return false;
@@ -505,7 +503,6 @@ function inputItemsToMessages(
         break;
       }
       case "reasoning": {
-        flushAssistant(out, state);
         // Prefer `encrypted_content` — that's where respToResponses /
         // streamToSse pin the FULL reasoning trace (Codex echoes it
         // back verbatim across turns, summary may be empty under
@@ -521,7 +518,24 @@ function inputItemsToMessages(
             .map((s) => s.text)
             .join("");
         }
-        state.pendingReasoning = text;
+        // If an assistant turn is already mid-assembly (pending tool_calls
+        // or text), fold this reasoning into the SAME message rather than
+        // flushing. Otherwise the resulting wire shape would be:
+        //   assistant(tool_calls=[A]) | assistant(reasoning_content=...) | tool(A)
+        // which violates the Chat Completions invariant "an assistant
+        // message with tool_calls must be IMMEDIATELY followed by tool
+        // messages" — DeepSeek V4 enforces this and 400s with
+        // "insufficient tool messages following tool_calls message". Codex
+        // emits reasoning items at varying positions (sometimes before,
+        // sometimes between, sometimes after function_calls within a
+        // single turn), so we must absorb wherever they land.
+        if (state.pendingToolCalls.length > 0 || state.pendingAssistantText !== null) {
+          state.pendingReasoning =
+            state.pendingReasoning !== null ? state.pendingReasoning + text : text;
+        } else {
+          flushAssistant(out, state);
+          state.pendingReasoning = text;
+        }
         break;
       }
       case "function_call": {
@@ -544,7 +558,42 @@ function inputItemsToMessages(
     }
   }
   flushAssistant(out, state);
+  ensureToolCallsHaveOutputs(out);
   return out;
+}
+
+// Defensive backstop: every assistant message with `tool_calls` must be
+// followed by one `{role: "tool", tool_call_id}` per call before any other
+// message. If the input is missing a tool output (cancelled turn, dropped
+// output, Codex bug), synthesize a placeholder tool message so we still
+// emit a body the upstream accepts. DeepSeek V4 strictly enforces this
+// invariant and 400s otherwise.
+function ensureToolCallsHaveOutputs(messages: ChatMessage[]): void {
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role !== "assistant" || !m.tool_calls?.length) continue;
+
+    const seen = new Set<string>();
+    let j = i + 1;
+    while (j < messages.length && messages[j].role === "tool") {
+      const tcid = messages[j].tool_call_id;
+      if (tcid) seen.add(tcid);
+      j++;
+    }
+    const missing = m.tool_calls
+      .map((tc) => tc.id)
+      .filter((id) => !seen.has(id));
+    if (missing.length === 0) continue;
+
+    const placeholders: ChatMessage[] = missing.map((id) => ({
+      role: "tool",
+      tool_call_id: id,
+      content: "[tool output missing — no function_call_output was provided for this call_id]",
+    }));
+    messages.splice(j, 0, ...placeholders);
+    // Skip past the newly-inserted placeholders to avoid re-scanning them.
+    i = j + placeholders.length - 1;
+  }
 }
 
 export function reqToChat(req: ResponsesRequest, opts: ReqToChatOpts = {}): ChatRequest {

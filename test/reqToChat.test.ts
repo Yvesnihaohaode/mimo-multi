@@ -214,6 +214,139 @@ describe("reqToChat", () => {
     ]);
   });
 
+  it("reasoning AFTER function_call folds into the SAME assistant message (DeepSeek 400 bug)", () => {
+    // Regression for DeepSeek 400:
+    //   "An assistant message with 'tool_calls' must be followed by tool messages
+    //    responding to each 'tool_call_id'. (insufficient tool messages following
+    //    tool_calls message)"
+    //
+    // Codex sometimes emits reasoning AFTER the function_call (or between
+    // function_call and function_call_output). Previously this flushed the
+    // pending tool_calls into one assistant message and the reasoning into a
+    // SECOND assistant message — interposing it between tool_calls and the
+    // tool result, which violates the Chat Completions contiguity invariant.
+    const req: ResponsesRequest = {
+      model: "deepseek-v4-pro",
+      input: [
+        { type: "message", role: "user", content: "run ls" },
+        {
+          type: "function_call",
+          call_id: "call_1",
+          name: "shell",
+          arguments: '{"cmd":"ls"}',
+        },
+        {
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: "thought about it after deciding to call" }],
+        },
+        { type: "function_call_output", call_id: "call_1", output: "a.txt" },
+      ],
+    };
+    const chat = reqToChat(req);
+    // The crucial structural invariant: assistant(tool_calls) MUST be
+    // immediately followed by tool messages — no other assistant message
+    // may be wedged in between.
+    expect(chat.messages).toEqual([
+      { role: "user", content: "run ls" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "shell", arguments: '{"cmd":"ls"}' },
+          },
+        ],
+        reasoning_content: "thought about it after deciding to call",
+      },
+      { role: "tool", tool_call_id: "call_1", content: "a.txt" },
+    ]);
+  });
+
+  it("reasoning BETWEEN multiple function_calls in the same turn folds correctly", () => {
+    const req: ResponsesRequest = {
+      model: "deepseek-v4-pro",
+      input: [
+        { type: "message", role: "user", content: "do A and B" },
+        {
+          type: "function_call",
+          call_id: "call_A",
+          name: "shell",
+          arguments: '{"cmd":"A"}',
+        },
+        {
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: "now also calling B" }],
+        },
+        {
+          type: "function_call",
+          call_id: "call_B",
+          name: "shell",
+          arguments: '{"cmd":"B"}',
+        },
+        { type: "function_call_output", call_id: "call_A", output: "ra" },
+        { type: "function_call_output", call_id: "call_B", output: "rb" },
+      ],
+    };
+    const chat = reqToChat(req);
+    // Both tool_calls in ONE assistant message, both tool messages follow
+    // immediately, no interloper.
+    expect(chat.messages.map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "tool",
+      "tool",
+    ]);
+    expect(chat.messages[1].tool_calls?.map((tc) => tc.id)).toEqual([
+      "call_A",
+      "call_B",
+    ]);
+    expect(chat.messages[2].tool_call_id).toBe("call_A");
+    expect(chat.messages[3].tool_call_id).toBe("call_B");
+  });
+
+  it("missing function_call_output gets a synthetic tool message placeholder (defensive)", () => {
+    // Defensive backstop: if Codex's input is missing a function_call_output
+    // for one of the tool_calls (cancelled turn, dropped output, etc.),
+    // synthesize a placeholder tool message rather than emit an invalid body.
+    const req: ResponsesRequest = {
+      model: "deepseek-v4-pro",
+      input: [
+        { type: "message", role: "user", content: "do A and B" },
+        {
+          type: "function_call",
+          call_id: "call_A",
+          name: "shell",
+          arguments: '{"cmd":"A"}',
+        },
+        {
+          type: "function_call",
+          call_id: "call_B",
+          name: "shell",
+          arguments: '{"cmd":"B"}',
+        },
+        { type: "function_call_output", call_id: "call_A", output: "ra" },
+        // call_B output is MISSING
+        { type: "message", role: "user", content: "follow-up" },
+      ],
+    };
+    const chat = reqToChat(req);
+    const idxAsst = chat.messages.findIndex(
+      (m) => m.role === "assistant" && m.tool_calls?.length
+    );
+    expect(idxAsst).toBeGreaterThanOrEqual(0);
+    const expectedIds = chat.messages[idxAsst].tool_calls!.map((tc) => tc.id);
+    // Collect tool messages immediately following the assistant.
+    const followingTools: string[] = [];
+    for (let i = idxAsst + 1; i < chat.messages.length; i++) {
+      const m = chat.messages[i];
+      if (m.role !== "tool") break;
+      followingTools.push(m.tool_call_id!);
+    }
+    expect(followingTools).toEqual(expectedIds);
+  });
+
   it("user message with text + image parts (omni model — images preserved)", () => {
     const req: ResponsesRequest = {
       model: "mimo-v2-omni",
@@ -268,21 +401,6 @@ describe("reqToChat", () => {
     expect(content).toContain("mimo-v2-omni");
     // Definitely no image_url part
     expect(JSON.stringify(chat.messages[0])).not.toContain("image_url");
-  });
-
-  it("preserves images on the 1m context omni variant", () => {
-    const req: ResponsesRequest = {
-      model: "mimo-v2-omni[1m]",
-      input: [
-        {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_image", image_url: "https://x/y.png" }],
-        },
-      ],
-    };
-    const chat = reqToChat(req);
-    expect(JSON.stringify(chat.messages[0])).toContain("image_url");
   });
 
   it("preserves images on plain `mimo-v2.5` (image-understanding model per docs)", () => {

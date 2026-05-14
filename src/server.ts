@@ -9,7 +9,7 @@ import {
   UpstreamError,
 } from "./upstream/openaiCompatClient.js";
 import { BUILTIN_PROVIDERS, PROVIDER_LIST, PROVIDERS } from "./providers/registry.js";
-import type { Provider, ProviderRuntime } from "./providers/types.js";
+import type { Provider, ProviderModel, ProviderRuntime } from "./providers/types.js";
 import { makeServerResponseSink } from "./util/sse.js";
 import { log } from "./util/log.js";
 import type { ChatRequest, ChatResponse, ChatUsage, ResponsesRequest } from "./translate/types.js";
@@ -75,6 +75,10 @@ export interface SelectedProvider {
   provider: Provider;
   runtime: ProviderRuntime;
   upstreamModel: string;
+  // Resolved ProviderModel for upstreamModel, when the provider's catalog
+  // knew it. Carries contextWindow so the upstream client can enrich
+  // "context length exceeded" errors with the actual cap.
+  modelInfo: ProviderModel | null;
   // Set when the client-supplied model id was NOT a known model for the
   // routed provider and we fell back to a different upstream id. Surfaced
   // in logs so the rewrite is visible (vs. silently changing the model id
@@ -168,6 +172,7 @@ export function selectProvider(clientModel: string, cfg: Config): SelectedProvid
       provider: p,
       runtime,
       upstreamModel: resolved?.id ?? p.defaultModel,
+      modelInfo: resolved ?? p.resolveModel(p.defaultModel),
       rewriteNotice: resolved
         ? null
         : {
@@ -190,6 +195,7 @@ export function selectProvider(clientModel: string, cfg: Config): SelectedProvid
       provider: p,
       runtime,
       upstreamModel: resolved?.id ?? p.defaultModel,
+      modelInfo: resolved ?? p.resolveModel(p.defaultModel),
       rewriteNotice: resolved
         ? null
         : {
@@ -212,6 +218,7 @@ export function selectProvider(clientModel: string, cfg: Config): SelectedProvid
     provider,
     runtime,
     upstreamModel,
+    modelInfo: resolved ?? provider.resolveModel(provider.defaultModel),
     rewriteNotice: resolved
       ? null
       : {
@@ -276,7 +283,7 @@ async function handleResponses(
     return respondToResponsesProbe(payload, res, !!payload.stream);
   }
 
-  const { provider, runtime, upstreamModel, rewriteNotice } = selectProvider(payload.model, cfg);
+  const { provider, runtime, upstreamModel, modelInfo, rewriteNotice } = selectProvider(payload.model, cfg);
   log.debug(`routing to provider=${provider.id}`, {
     baseUrl: runtime.baseUrl,
     clientModel: payload.model,
@@ -297,6 +304,7 @@ async function handleResponses(
       provider,
       runtime,
       upstreamModel,
+      modelInfo,
       rewriteNotice,
     });
   }
@@ -339,6 +347,10 @@ async function handleResponses(
           apiKey: runtime.apiKey,
           userAgent: cfg.userAgent,
           enhanceError: provider.enhanceError.bind(provider),
+          contextOverflowMode: cfg.contextOverflowMode,
+          modelInfo: modelInfo
+            ? { id: modelInfo.id, contextWindow: modelInfo.contextWindow }
+            : { id: upstreamModel },
         },
         chat,
         ac.signal
@@ -403,6 +415,10 @@ async function handleResponses(
         apiKey: runtime.apiKey,
         userAgent: cfg.userAgent,
         enhanceError: provider.enhanceError.bind(provider),
+        contextOverflowMode: cfg.contextOverflowMode,
+        modelInfo: modelInfo
+          ? { id: modelInfo.id, contextWindow: modelInfo.contextWindow }
+          : { id: upstreamModel },
       },
       chat,
       ac.signal
@@ -497,10 +513,11 @@ async function handleResponsesPassthrough(
     provider: Provider;
     runtime: ProviderRuntime;
     upstreamModel: string;
+    modelInfo: SelectedProvider["modelInfo"];
     rewriteNotice: SelectedProvider["rewriteNotice"];
   }
 ): Promise<void> {
-  const { provider, runtime, upstreamModel, rewriteNotice } = selected;
+  const { provider, runtime, upstreamModel, modelInfo, rewriteNotice } = selected;
   const stream = !!payload.stream;
 
   const preprocessed =
@@ -546,6 +563,10 @@ async function handleResponsesPassthrough(
           apiKey: runtime.apiKey,
           userAgent: cfg.userAgent,
           enhanceError: provider.enhanceError.bind(provider),
+          contextOverflowMode: cfg.contextOverflowMode,
+          modelInfo: modelInfo
+            ? { id: modelInfo.id, contextWindow: modelInfo.contextWindow }
+            : { id: upstreamModel },
         },
         forwardBody,
         ac.signal
@@ -611,6 +632,10 @@ async function handleResponsesPassthrough(
         apiKey: runtime.apiKey,
         userAgent: cfg.userAgent,
         enhanceError: provider.enhanceError.bind(provider),
+        contextOverflowMode: cfg.contextOverflowMode,
+        modelInfo: modelInfo
+          ? { id: modelInfo.id, contextWindow: modelInfo.contextWindow }
+          : { id: upstreamModel },
       },
       forwardBody,
       ac.signal
@@ -819,7 +844,7 @@ async function handleChatPassthrough(
     return respondToChatProbe(payload, res, !!payload.stream);
   }
 
-  const { provider, runtime, upstreamModel, rewriteNotice } = selectProvider(payload.model, cfg);
+  const { provider, runtime, upstreamModel, modelInfo, rewriteNotice } = selectProvider(payload.model, cfg);
   log.debug(`routing chat passthrough to provider=${provider.id}`, {
     clientModel: payload.model,
     upstreamModel,
@@ -868,6 +893,10 @@ async function handleChatPassthrough(
         apiKey: runtime.apiKey,
         userAgent: cfg.userAgent,
         enhanceError: provider.enhanceError.bind(provider),
+        contextOverflowMode: cfg.contextOverflowMode,
+        modelInfo: modelInfo
+          ? { id: modelInfo.id, contextWindow: modelInfo.contextWindow }
+          : { id: upstreamModel },
       },
       body,
       ac.signal

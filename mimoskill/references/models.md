@@ -8,9 +8,7 @@ the bits the skill cares about — read the official docs for full schemas.
 | Model | Text | Vision | Audio in | Image gen | Audio gen | Reasoning | Context | Best for |
 |---|---|---|---|---|---|---|---|---|
 | `mimo-v2.5-pro` | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ strong | 128K | Coding, agentic tasks, complex reasoning |
-| `mimo-v2.5-pro[1m]` | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ strong | 1M | Long-doc / large-codebase analysis |
 | `mimo-v2.5` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ medium | 128K | Multimodal chat with image input |
-| `mimo-v2.5[1m]` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ medium | 1M | Long-context with images |
 | `mimo-v2-omni` | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | 128K | Full-modal input (text/image/audio/video) |
 | `mimo-v2-flash` | ✅ | ❌ | ❌ | ❌ | ❌ | – | 128K | Cheap / fast simple chat |
 | `mimo-v2.5-tts` | ❌ | ❌ | ❌ | ❌ | ✅ | – | – | TTS (separate endpoint) |
@@ -102,7 +100,6 @@ Streaming: search sources arrive in the **first** SSE chunk's `delta.annotations
 
 ```
 Need image input?            → mimo-v2.5 (or mimo-v2-omni for audio/video too)
-Need 1M context?             → mimo-v2.5-pro[1m] or mimo-v2.5[1m]
 Doing heavy reasoning/code?  → mimo-v2.5-pro
 Just doing cheap text chat?  → mimo-v2-flash
 Need TTS?                    → mimo-v2.5-tts (separate endpoint)

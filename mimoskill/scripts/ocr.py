@@ -3,7 +3,7 @@
 ocr.py — OCR / image recognition that works without any API key.
 
 Use this when the surrounding chat model can't see images (mimo-v2.5-pro,
-mimo-v2.5-pro[1m], mimo-v2-flash, deepseek-*, or any text-only model).
+mimo-v2-flash, deepseek-*, or any text-only model).
 
 Engines (--engine):
   auto          (default) — mimo if MIMO_API_KEY set, else tesseract if

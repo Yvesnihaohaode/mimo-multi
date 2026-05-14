@@ -275,6 +275,10 @@ export interface ChatRequest {
   // make the model more action-oriented for agentic / tool-heavy tasks.
   thinking?: { type: "enabled" | "disabled" | "auto" };
   enable_thinking?: boolean;
+  // DeepSeek-specific thinking-mode intensity. See
+  // https://api-docs.deepseek.com/zh-cn/guides/thinking_mode — default "high"
+  // for normal requests, Claude Code / OpenCode-style Agents auto-promoted to "max".
+  reasoning_effort?: "low" | "medium" | "high" | "xhigh" | "max";
 }
 
 export interface ChatChoiceMessage {

@@ -83,11 +83,6 @@ export function alternativesComment(t: SnippetTarget): string {
   );
   for (const m of provider.builtinModels) {
     if (m.deprecatedAfter) continue;
-    // Skip `[1m]` long-context variants — Codex doesn't actually honor
-    // model_context_window above its built-in cap, so advertising them as
-    // alternatives here just sets users up for disappointment. The variants
-    // still exist in the catalog for direct mimo_chat.py / API use.
-    if (m.id.endsWith("[1m]")) continue;
     const ctx = m.contextWindow ? `   model_context_window = ${m.contextWindow}` : "";
     const modelMaxOut =
       m.maxOutputTokens ?? (t.providerId === "deepseek" ? deepseekMaxOutput() : undefined);

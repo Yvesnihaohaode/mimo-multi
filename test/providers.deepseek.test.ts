@@ -14,11 +14,40 @@ const mimoCtx = {
 };
 
 describe("deepseek provider", () => {
-  it("preprocessResponses does NOT inject thinking field (mimo-only)", () => {
+  it("preprocessResponses injects thinking.enabled + reasoning_effort=high by default", () => {
     const req: ResponsesRequest = { model: "deepseek-v4-pro", input: "hello" };
     const chat = deepseek.preprocessResponses(req, dsCtx);
-    expect((chat as Record<string, unknown>).thinking).toBeUndefined();
+    expect(chat.thinking).toEqual({ type: "enabled" });
+    expect(chat.reasoning_effort).toBe("high");
+    // enable_thinking (MiMo-style legacy field) must still be stripped.
     expect(chat.enable_thinking).toBeUndefined();
+  });
+
+  it("preprocessResponses preserves client-supplied thinking.disabled (no default override)", () => {
+    const req: ResponsesRequest = {
+      model: "deepseek-v4-pro",
+      input: "hello",
+    };
+    // Simulate a future client that already negotiates `thinking` upstream.
+    const chat = deepseek.preprocessResponses(req, dsCtx);
+    chat.thinking = { type: "disabled" };
+    const out = deepseek.preprocessChat(chat, dsCtx);
+    expect(out.thinking).toEqual({ type: "disabled" });
+  });
+
+  it("preprocessResponses strips temperature/top_p/penalties in thinking mode", () => {
+    const req: ResponsesRequest = {
+      model: "deepseek-v4-pro",
+      input: "hi",
+      temperature: 0.5,
+      top_p: 0.9,
+    };
+    const chat = deepseek.preprocessResponses(req, dsCtx);
+    expect(chat.thinking?.type).toBe("enabled");
+    expect(chat.temperature).toBeUndefined();
+    expect(chat.top_p).toBeUndefined();
+    expect(chat.presence_penalty).toBeUndefined();
+    expect(chat.frequency_penalty).toBeUndefined();
   });
 
   it("preprocessResponses drops web_search builtin (DeepSeek doesn't have one)", () => {
@@ -45,7 +74,7 @@ describe("deepseek provider", () => {
     expect(chat.parallel_tool_calls).toBe(false);
   });
 
-  it("preprocessChat strips thinking/enable_thinking on passthrough", () => {
+  it("preprocessChat preserves thinking, strips enable_thinking, injects reasoning_effort default", () => {
     const body: ChatRequest = {
       model: "deepseek-v4-pro",
       messages: [{ role: "user", content: "hi" }],
@@ -53,10 +82,11 @@ describe("deepseek provider", () => {
       enable_thinking: true,
     };
     const out = deepseek.preprocessChat(body, dsCtx);
-    expect((out as Record<string, unknown>).thinking).toBeUndefined();
+    expect(out.thinking).toEqual({ type: "enabled" });
     expect(out.enable_thinking).toBeUndefined();
+    expect(out.reasoning_effort).toBe("high");
     // original is not mutated
-    expect(body.thinking).toEqual({ type: "enabled" });
+    expect(body.enable_thinking).toBe(true);
   });
 
   it("preprocessChat PRESERVES reasoning_content for V4 family (V4 requires it back in thinking mode)", () => {
@@ -237,6 +267,72 @@ describe("mimo provider preprocessResponses retains MiMo specifics", () => {
     const assistantWithReasoning = chat.messages.find((m) => m.reasoning_content);
     expect(assistantWithReasoning).toBeDefined();
     expect(assistantWithReasoning!.reasoning_content).toBe("I should call search");
+  });
+
+  it("M2: injects thinking.enabled for v2.5-pro / v2.5 / v2-pro / omni", () => {
+    for (const model of ["mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-pro", "mimo-v2-omni"]) {
+      const chat = mimo.preprocessResponses({ model, input: "hi" }, mimoCtx);
+      expect(chat.thinking?.type, `${model} should default to thinking.enabled`).toBe("enabled");
+    }
+  });
+
+  it("M2: does NOT inject thinking for mimo-v2-flash (upstream default disabled)", () => {
+    const chat = mimo.preprocessResponses({ model: "mimo-v2-flash", input: "hi" }, mimoCtx);
+    expect(chat.thinking).toBeUndefined();
+  });
+
+  it("M3: strips temperature on mimo-v2.5-pro when thinking is enabled", () => {
+    const chat = mimo.preprocessResponses(
+      { model: "mimo-v2.5-pro", input: "hi", temperature: 0.5 },
+      mimoCtx
+    );
+    expect(chat.thinking?.type).toBe("enabled");
+    expect(chat.temperature).toBeUndefined();
+  });
+
+  it("M3: keeps temperature on mimo-v2-flash (no thinking, no force)", () => {
+    const chat = mimo.preprocessResponses(
+      { model: "mimo-v2-flash", input: "hi", temperature: 0.5 },
+      mimoCtx
+    );
+    expect(chat.temperature).toBe(0.5);
+  });
+
+  it("M3: keeps temperature on mimo-v2-pro despite thinking (only v2.5 family is fixed)", () => {
+    // Official docs only call out mimo-v2.5-pro / mimo-v2.5 as forced to 1.0.
+    // v2-pro / omni leave temperature alone.
+    const chat = mimo.preprocessResponses(
+      { model: "mimo-v2-pro", input: "hi", temperature: 0.3 },
+      mimoCtx
+    );
+    expect(chat.thinking?.type).toBe("enabled");
+    expect(chat.temperature).toBe(0.3);
+  });
+
+  it("M4: strips tool_choice when set to a non-auto value", () => {
+    const body: ChatRequest = {
+      model: "mimo-v2.5-pro",
+      messages: [{ role: "user", content: "hi" }],
+      tool_choice: "required",
+    };
+    const out = mimo.preprocessChat(body, mimoCtx);
+    expect(out.tool_choice).toBeUndefined();
+  });
+
+  it("M4: keeps tool_choice when explicitly 'auto'", () => {
+    const body: ChatRequest = {
+      model: "mimo-v2.5-pro",
+      messages: [{ role: "user", content: "hi" }],
+      tool_choice: "auto",
+    };
+    const out = mimo.preprocessChat(body, mimoCtx);
+    expect(out.tool_choice).toBe("auto");
+  });
+
+  it("M5: catalog declares maxOutputTokens for every builtin model", () => {
+    for (const m of mimo.builtinModels) {
+      expect(m.maxOutputTokens, `${m.id} should have maxOutputTokens`).toBeGreaterThan(0);
+    }
   });
 
   it("inferBaseUrlFromKey routes tp-* keys to the token-plan host", () => {

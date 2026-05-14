@@ -9,7 +9,16 @@
 // --no-git-tag-version, then craft the commit + tag ourselves via `git`,
 // which takes the message as a plain argv entry — no shell parsing involved.
 //
-// Usage: node scripts/release.mjs <patch|minor|major>
+// Usage: node scripts/release.mjs <patch|minor|major|prerelease> [--preid beta]
+//
+// `prerelease` increments the prerelease counter when current is already a
+// prerelease (0.2.5-beta.0 → 0.2.5-beta.1), or starts a new prerelease when
+// current is stable. Pass `--preid <id>` to pick the prerelease identifier
+// (default `beta`); ignored when current already has a different identifier.
+//
+// CI in publish.yml maps SemVer prerelease suffix → npm dist-tag automatically
+// (beta / alpha / rc / next), so `release:prerelease` cuts a beta build that
+// users install with `npm i -g mimo2codex@beta` without touching `latest`.
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -17,10 +26,20 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+const ALLOWED_BUMPS = ["patch", "minor", "major", "prerelease"];
 const bump = process.argv[2];
-if (!["patch", "minor", "major"].includes(bump)) {
-  console.error("Usage: node scripts/release.mjs <patch|minor|major>");
+if (!ALLOWED_BUMPS.includes(bump)) {
+  console.error(`Usage: node scripts/release.mjs <${ALLOWED_BUMPS.join("|")}> [--preid beta]`);
   process.exit(1);
+}
+
+// Parse `--preid <id>` if present.
+let preid = "beta";
+{
+  const idx = process.argv.indexOf("--preid");
+  if (idx !== -1 && process.argv[idx + 1]) {
+    preid = process.argv[idx + 1];
+  }
 }
 
 let lastSubject = "";
@@ -51,7 +70,11 @@ function run(cmd, args, { shell = false } = {}) {
 // npm on Windows is npm.cmd — Node's spawn can't launch .cmd files directly,
 // so we go through the shell. These args are all simple ASCII so re-parsing
 // by cmd.exe is harmless.
-run("npm", ["version", bump, "--no-git-tag-version"], { shell: true });
+const versionArgs = ["version", bump, "--no-git-tag-version"];
+if (bump === "prerelease") {
+  versionArgs.push("--preid", preid);
+}
+run("npm", versionArgs, { shell: true });
 
 // 2. Read the new version.
 const pkg = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));

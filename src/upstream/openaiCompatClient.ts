@@ -1,12 +1,23 @@
 import type { ChatRequest, ResponsesRequest } from "../translate/types.js";
 import { log, redactKey } from "../util/log.js";
 import type { ProviderEnhancedError } from "../providers/types.js";
+import { detectContextOverflow } from "./contextOverflow.js";
+
+export type ContextOverflowMode = "friendly" | "passthrough";
 
 export interface UpstreamConfig {
   baseUrl: string;
   apiKey: string;
   userAgent: string;
   enhanceError?: (ctx: { status: number; snippet?: string }) => ProviderEnhancedError | null;
+  // When set to "friendly" (default), upstream 400 responses that look like
+  // context-window overflows are rewritten to a structured bilingual message
+  // guiding the user to run /compact in codex. "passthrough" preserves the
+  // raw upstream error verbatim.
+  contextOverflowMode?: ContextOverflowMode;
+  // Routed model metadata, used to enrich the friendly overflow message with
+  // the upstream model id and its context-window cap.
+  modelInfo?: { id: string; contextWindow?: number };
   connectTimeoutMs?: number;
   idleTimeoutMs?: number;
 }
@@ -137,7 +148,18 @@ async function postUpstream(
 
   if (!res.ok) {
     const snippet = await readSnippet(res);
-    const enhanced = cfg.enhanceError?.({ status: res.status, snippet });
+    // Provider-specific enhancement runs first so dedicated rules (e.g. MiMo's
+    // "webSearchEnabled is false" hint) keep winning over the generic
+    // context-overflow detector below.
+    let enhanced = cfg.enhanceError?.({ status: res.status, snippet });
+    if (!enhanced && (cfg.contextOverflowMode ?? "friendly") === "friendly") {
+      enhanced = detectContextOverflow({
+        status: res.status,
+        snippet,
+        modelId: cfg.modelInfo?.id,
+        contextWindow: cfg.modelInfo?.contextWindow,
+      });
+    }
     const code = enhanced?.code ?? defaultErrorCode(res.status);
     const message = enhanced?.message ?? `upstream returned ${res.status}: ${snippet ?? "(no body)"}`;
     if (enhanced) {

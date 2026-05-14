@@ -243,6 +243,7 @@ Full field reference, `wireApi: "responses"` passthrough mode, copy-pasteable ex
 | `--no-admin` | `MIMO2CODEX_NO_ADMIN=1` | off | disable the admin UI + sqlite logging |
 | `--no-reasoning` | `MIMO2CODEX_NO_REASONING=1` | off | hide reasoning from Codex (still preserved between turns) |
 | `--verbose`, `-v` | `MIMO2CODEX_VERBOSE=1` | off | log every translated request body |
+| _env-only_ | `MIMO2CODEX_CONTEXT_OVERFLOW_MODE` | `friendly` | how to render upstream 400s identified as "context window exceeded": `friendly` (default) rewrites them to a bilingual hint pointing users at codex's `/compact` command; `passthrough` forwards the raw upstream error unchanged |
 
 ### Built-in defaults (no flag needed)
 
@@ -501,6 +502,24 @@ npm run build:all    # both at once
 ```
 
 To register `mimo2codex` globally from your local checkout: `npm run build:all && npm link`.
+
+## Changelog
+
+### 0.2.5-beta.0 (beta channel)
+
+Behavior alignment with MiMo / DeepSeek **official docs**, plus a community-reported DeepSeek tool-calling 400 fix. No breaking changes. Install: `npm i -g mimo2codex@beta`.
+
+- **Fix DeepSeek multi-turn tool-calling 400**: `"An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. (insufficient tool messages following tool_calls message)"`. Root cause: `reasoning` items in the input were unconditionally flushed, wedging an `assistant(reasoning_content)` message between `assistant(tool_calls)` and the matching `tool` message — violating the Chat Completions contiguity invariant DeepSeek strictly enforces. `reasoning` is now folded into the same assistant message as the pending tool_calls. Also adds a defensive backstop: if any `tool_call_id` is missing its `function_call_output` (cancelled turn, dropped output, etc.), a placeholder tool message is synthesized so the emitted body is always structurally valid.
+- **DeepSeek thinking mode restored**: the `thinking` field used to be silently stripped by the DeepSeek provider — effectively nobody could enable thinking mode. Now we inject `thinking: {type: "enabled"}` + `reasoning_effort: "high"` by default per official docs; client-supplied values are respected.
+- **DeepSeek thinking-mode parameter strip**: `temperature` / `top_p` / `presence_penalty` / `frequency_penalty` are ignored upstream in thinking mode; we strip them client-side to match.
+- **MiMo `mimo-v2-pro` added to catalog** (note: v2-pro, no `.5`). It's listed in the official OpenAI-API `model` enum but was missing.
+- **MiMo `thinking` default by model**: `mimo-v2-flash` defaults to upstream-disabled (no longer blindly injected); `mimo-v2.5-pro` / `mimo-v2.5` / `mimo-v2-pro` / `mimo-v2-omni` default-inject `{type: "enabled"}`.
+- **MiMo `mimo-v2.5-pro` / `mimo-v2.5` in thinking mode: `temperature` stripped** (upstream forces it to 1.0 anyway).
+- **MiMo `tool_choice` non-`auto` values stripped** (upstream removes them).
+- **MiMo catalog gets `maxOutputTokens`**: pro / v2-pro = 131072, v2.5 / omni = 32768, flash = 65536. `print-config` now emits `model_max_output_tokens`.
+- DeepSeek `defaultBaseUrl` **kept at `https://api.deepseek.com/v1`** (the docs say `https://api.deepseek.com`, but with `/v1` works too and we avoid regression risk).
+
+Will promote to `0.2.5` (latest) after community testing.
 
 ## License
 

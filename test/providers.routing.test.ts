@@ -20,8 +20,10 @@ describe("provider registry", () => {
   describe("byClientModel routing", () => {
     it("MiMo models route to mimo provider", () => {
       expect(byClientModel("mimo-v2.5-pro")?.id).toBe("mimo");
-      expect(byClientModel("mimo-v2.5-pro[1m]")?.id).toBe("mimo");
+      expect(byClientModel("mimo-v2-pro")?.id).toBe("mimo");
       expect(byClientModel("mimo-v2-flash")?.id).toBe("mimo");
+      expect(mimo.resolveModel("mimo-v2-pro")?.id).toBe("mimo-v2-pro");
+      expect(mimo.resolveModel("mimo-v2-pro")?.supportsReasoning).toBe(true);
     });
 
     it("MiMo vision models route to mimo provider with identity resolution", () => {
@@ -32,10 +34,6 @@ describe("provider registry", () => {
       expect(mimo.resolveModel("mimo-v2.5")?.id).toBe("mimo-v2.5");
       expect(mimo.resolveModel("mimo-v2.5")?.supportsImages).toBe(true);
 
-      expect(byClientModel("mimo-v2.5[1m]")?.id).toBe("mimo");
-      expect(mimo.resolveModel("mimo-v2.5[1m]")?.id).toBe("mimo-v2.5[1m]");
-      expect(mimo.resolveModel("mimo-v2.5[1m]")?.supportsImages).toBe(true);
-
       expect(byClientModel("mimo-v2-omni")?.id).toBe("mimo");
       expect(mimo.resolveModel("mimo-v2-omni")?.id).toBe("mimo-v2-omni");
       expect(mimo.resolveModel("mimo-v2-omni")?.supportsImages).toBe(true);
@@ -43,7 +41,6 @@ describe("provider registry", () => {
 
     it("pro/flash variants are explicitly non-vision", () => {
       expect(mimo.resolveModel("mimo-v2.5-pro")?.supportsImages).toBe(false);
-      expect(mimo.resolveModel("mimo-v2.5-pro[1m]")?.supportsImages).toBe(false);
       expect(mimo.resolveModel("mimo-v2-flash")?.supportsImages).toBe(false);
     });
 
