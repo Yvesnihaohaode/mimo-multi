@@ -78,6 +78,7 @@
       "dropStreamOptionsSub": "Strip stream_options. ⚠️ Upstream stops returning usage → admin DB token / cache-hit chart go to 0",
       "dropParallelToolCallsSub": "Strip parallel_tool_calls",
       "mergeSystemMessagesSub": "Merge multiple role:\"system\" messages into one leading entry",
+      "extractThinkTagsSub": "Response side: extract <think>...</think> blocks from content into reasoning_content so they don't leak as plain assistant text in Codex (required for MiniMax M1/M2/M3, some GLM/Qwen-thinking models)",
       "docsUrl": "docsUrl",
       "docsUrlHint": "Optional — shown in the 'missing key' error as a link"
     },

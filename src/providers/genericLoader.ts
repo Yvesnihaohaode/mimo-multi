@@ -152,6 +152,10 @@ function parseSpec(raw: unknown, idx: number): GenericProviderSpec {
             typeof features.mergeSystemMessages === "boolean"
               ? features.mergeSystemMessages
               : undefined,
+          extractThinkTags:
+            typeof features.extractThinkTags === "boolean"
+              ? features.extractThinkTags
+              : undefined,
         }
       : undefined,
     docsUrl: typeof obj.docsUrl === "string" ? obj.docsUrl : undefined,

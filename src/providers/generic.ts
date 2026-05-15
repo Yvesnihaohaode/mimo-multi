@@ -154,5 +154,12 @@ export function createGenericProvider(spec: GenericProviderSpec): Provider {
     enhanceError(_ctx): ProviderEnhancedError | null {
       return null;
     },
+
+    // minimax-compat: 响应侧 inline <think>...</think> 切分开关。features.minimaxCompat
+    // 一键预设包揽；也可独立打开 features.extractThinkTags（部分 GLM/Qwen-thinking
+    // 模型同样是 inline think 格式）。
+    responseFlags: {
+      extractInlineThink: !!features.minimaxCompat || !!features.extractThinkTags,
+    },
   };
 }

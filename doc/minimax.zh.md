@@ -30,6 +30,8 @@ MiniMax 比其他 OpenAI-compatible 上游严：
 
 Codex 还会以请求里 `config.toml` 配置的 model 名（如 `gpt-5.5`）作为字面值发上来，MiniMax 不识别 → 直接 400。
 
+**另一个常见困惑** —— MiniMax 的 thinking 内容用 inline `<think>...</think>` 包裹在 `content` 字段里，而 mimo2codex 默认按 DeepSeek/MiMo 风格从单独的 `reasoning_content` 字段读思考。不切分的话 Codex 客户端会把 `<think>...</think>` 当作正常 assistant 文本直接显示给用户。`features.extractThinkTags`（含在 `minimaxCompat` 一键预设里）会把这些块从 content 切到 reasoning_content，行为对齐 DeepSeek-R1。
+
 ## 推荐配置（providers.json）
 
 在 `~/.mimo2codex/providers.json` 写入：
@@ -98,6 +100,7 @@ mimo2codex
 | `dropStreamOptions` | 整个 `stream_options` 字段。⚠️ 会让 admin DB 的 token 统计 / 缓存命中柱状图变 0（上游不再回传 usage） |
 | `dropParallelToolCalls` | 整个 `parallel_tool_calls` 字段 |
 | `mergeSystemMessages` | 合并所有 `role: "system"` 消息为单条前置（双换行拼接） |
+| `extractThinkTags` | **响应侧**：把 chat completion `content` 里的 inline `<think>...</think>` 块切出来，并入 `reasoning_content`。不开启的话 Codex 会把 `<think>...</think>` 当作正常 assistant 文本直接显示 |
 
 ## 验证
 

@@ -123,6 +123,7 @@ mimo2codex --model qwen        # default provider = qwen
 | `features.dropStreamOptions` | — | `false` | Strip `stream_options`. ⚠️ Upstream stops returning `usage` → admin DB token stats become 0 |
 | `features.dropParallelToolCalls` | — | `false` | Strip `parallel_tool_calls` |
 | `features.mergeSystemMessages` | — | `false` | Merge all `role: "system"` messages into one leading entry (MiniMax accepts only one) |
+| `features.extractThinkTags` | — | `false` | Response side: extract `<think>...</think>` blocks out of `content` into `reasoning_content` (MiniMax M1/M2/M3, GLM/Qwen-thinking emit inline thinking) |
 | `forceDefaultModel` | — | `false` | When `models: []`, return null from resolveModel so unknown client model ids rewrite to `defaultModel`. Use with MiniMax env-var single-instance |
 | `docsUrl` | — | — | Link shown in the "missing API key" error |
 

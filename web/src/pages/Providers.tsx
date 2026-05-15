@@ -47,6 +47,7 @@ interface FormValues extends GenericProviderSpec {
   featDropStreamOptions: boolean;
   featDropParallelToolCalls: boolean;
   featMergeSystemMessages: boolean;
+  featExtractThinkTags: boolean;
   // minimax-compat: 顶层 forceDefaultModel 是非 features 字段，单独平铺也是为了表单绑定方便。
   featForceDefaultModel: boolean;
 }
@@ -72,6 +73,7 @@ function emptyFormValues(): FormValues {
     featDropStreamOptions: false,
     featDropParallelToolCalls: false,
     featMergeSystemMessages: false,
+    featExtractThinkTags: false,
     featForceDefaultModel: false,
     docsUrl: "",
   };
@@ -97,6 +99,7 @@ function specToFormValues(spec: GenericProviderSpec): FormValues {
       dropStreamOptions: !!spec.features?.dropStreamOptions,
       dropParallelToolCalls: !!spec.features?.dropParallelToolCalls,
       mergeSystemMessages: !!spec.features?.mergeSystemMessages,
+      extractThinkTags: !!spec.features?.extractThinkTags,
     },
     forceParallelToolCalls: !!spec.features?.forceParallelToolCalls,
     featWebSearch: !!spec.features?.webSearch,
@@ -107,6 +110,7 @@ function specToFormValues(spec: GenericProviderSpec): FormValues {
     featDropStreamOptions: !!spec.features?.dropStreamOptions,
     featDropParallelToolCalls: !!spec.features?.dropParallelToolCalls,
     featMergeSystemMessages: !!spec.features?.mergeSystemMessages,
+    featExtractThinkTags: !!spec.features?.extractThinkTags,
     featForceDefaultModel: !!spec.forceDefaultModel,
     docsUrl: spec.docsUrl ?? "",
   };
@@ -138,6 +142,7 @@ function formValuesToSpec(form: FormValues): GenericProviderSpec {
   if (form.featDropStreamOptions) features.dropStreamOptions = true;
   if (form.featDropParallelToolCalls) features.dropParallelToolCalls = true;
   if (form.featMergeSystemMessages) features.mergeSystemMessages = true;
+  if (form.featExtractThinkTags) features.extractThinkTags = true;
   if (Object.keys(features).length > 0) out.features = features;
   // minimax-compat: 顶层 forceDefaultModel
   if (form.featForceDefaultModel) out.forceDefaultModel = true;
@@ -708,6 +713,14 @@ function ProviderFormModal({
                 <code>mergeSystemMessages</code>{" "}
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   · {t("form.fields.mergeSystemMessagesSub")}
+                </Typography.Text>
+              </Checkbox>
+            </Form.Item>
+            <Form.Item name="featExtractThinkTags" valuePropName="checked" noStyle>
+              <Checkbox>
+                <code>extractThinkTags</code>{" "}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  · {t("form.fields.extractThinkTagsSub")}
                 </Typography.Text>
               </Checkbox>
             </Form.Item>

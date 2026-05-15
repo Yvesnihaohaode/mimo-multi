@@ -123,6 +123,7 @@ mimo2codex --model qwen        # 默认 provider 是 qwen
 | `features.dropStreamOptions` | — | `false` | 删 `stream_options`。⚠️ 上游将不再回传 `usage` → admin DB token 统计会变 0 |
 | `features.dropParallelToolCalls` | — | `false` | 删 `parallel_tool_calls` |
 | `features.mergeSystemMessages` | — | `false` | 合并所有 `role: "system"` 消息为单条前置（MiniMax 只接受 1 条） |
+| `features.extractThinkTags` | — | `false` | 响应侧：把 `content` 里的 `<think>...</think>` 块切到 `reasoning_content`（MiniMax M1/M2/M3、GLM/Qwen-thinking 等使用 inline 思考） |
 | `forceDefaultModel` | — | `false` | 当 `models: []` 时让 resolveModel 返回 null，未知 model 名改写到 `defaultModel`。配 MiniMax env-var 单实例使用 |
 | `docsUrl` | — | — | "缺 API key" 错误消息里展示的链接 |
 

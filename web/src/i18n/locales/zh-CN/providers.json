@@ -78,6 +78,7 @@
       "dropStreamOptionsSub": "删 stream_options。⚠️ 上游不再回传 usage → admin DB token / 缓存命中柱状图会变 0",
       "dropParallelToolCallsSub": "删 parallel_tool_calls",
       "mergeSystemMessagesSub": "合并多条 role:\"system\" 消息为单条前置",
+      "extractThinkTagsSub": "响应侧：把 content 里的 <think>...</think> 块切到 reasoning_content，避免泄漏给 Codex 当作正文显示（MiniMax M1/M2/M3、部分 GLM/Qwen-thinking 模型必开）",
       "docsUrl": "docsUrl",
       "docsUrlHint": "可选——缺 key 错误提示里的获取链接"
     },

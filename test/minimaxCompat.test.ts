@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyMinimaxCompat } from "../src/translate/minimaxCompat.js";
+import {
+  applyMinimaxCompat,
+  applyInlineThinkSplitToMessage,
+  createInlineThinkSplitter,
+  splitInlineThink,
+} from "../src/translate/minimaxCompat.js";
 import type { ChatRequest } from "../src/translate/types.js";
 
 // Helper: build a ChatRequest that contains every "issue #7" symptom in one
@@ -247,5 +252,168 @@ describe("applyMinimaxCompat — mergeSystemMessages edge cases", () => {
     applyMinimaxCompat(chat, { mergeSystemMessages: true });
     expect(chat.messages.filter((m) => m.role === "system")).toHaveLength(0);
     expect(chat.messages.map((m) => m.role)).toEqual(["user"]);
+  });
+});
+
+// =========================================================================
+// 响应侧 — inline <think>...</think> 切分（MiniMax M1/M2/M3 风格）
+// =========================================================================
+
+describe("splitInlineThink — pure string splitter", () => {
+  it("returns content unchanged when no <think> tags", () => {
+    expect(splitInlineThink("hello world")).toEqual({
+      reasoning: "",
+      content: "hello world",
+    });
+  });
+
+  it("extracts single block, leaves surrounding content", () => {
+    expect(splitInlineThink("<think>reasoning here</think>\n\nactual answer")).toEqual({
+      reasoning: "reasoning here",
+      content: "\n\nactual answer",
+    });
+  });
+
+  it("extracts multiple blocks, joins reasoning with double newline", () => {
+    const r = splitInlineThink(
+      "<think>step 1</think>middle <think>step 2</think>final",
+    );
+    expect(r.reasoning).toBe("step 1\n\nstep 2");
+    expect(r.content).toBe("middle final");
+  });
+
+  it("preserves unclosed <think> as literal text (does not eat the tail)", () => {
+    const r = splitInlineThink("normal <think>oops no closer");
+    expect(r.reasoning).toBe("");
+    expect(r.content).toBe("normal <think>oops no closer");
+  });
+
+  it("empty input → empty output, no throw", () => {
+    expect(splitInlineThink("")).toEqual({ reasoning: "", content: "" });
+  });
+
+  it("does NOT match uppercase <THINK> (case-sensitive on purpose)", () => {
+    // 避免误吞 LLM 写出的真实标签字面文本（教程、代码示例等）
+    const r = splitInlineThink("<THINK>not stripped</THINK>");
+    expect(r.reasoning).toBe("");
+    expect(r.content).toBe("<THINK>not stripped</THINK>");
+  });
+});
+
+describe("applyInlineThinkSplitToMessage — non-stream message", () => {
+  it("moves <think> into reasoning_content, rewrites content", () => {
+    const msg = {
+      role: "assistant",
+      content: "<think>thinking...</think>visible answer",
+    } as { content?: string | unknown; reasoning_content?: string | null };
+    applyInlineThinkSplitToMessage(msg);
+    expect(msg.content).toBe("visible answer");
+    expect(msg.reasoning_content).toBe("thinking...");
+  });
+
+  it("appends to existing reasoning_content (not overwrites)", () => {
+    const msg = {
+      content: "<think>more</think>tail",
+      reasoning_content: "existing",
+    };
+    applyInlineThinkSplitToMessage(msg);
+    expect(msg.reasoning_content).toBe("existing\n\nmore");
+    expect(msg.content).toBe("tail");
+  });
+
+  it("no-op when no <think> tag in content", () => {
+    const msg = { content: "plain", reasoning_content: "rc" };
+    applyInlineThinkSplitToMessage(msg);
+    expect(msg.content).toBe("plain");
+    expect(msg.reasoning_content).toBe("rc");
+  });
+
+  it("skips when content is not a string (multimodal parts array)", () => {
+    const msg = { content: [{ type: "text", text: "x" }] as unknown };
+    applyInlineThinkSplitToMessage(msg);
+    expect(msg.content).toEqual([{ type: "text", text: "x" }]);
+  });
+});
+
+describe("createInlineThinkSplitter — stream splitter", () => {
+  it("handles complete <think>...</think> within a single chunk", () => {
+    const sp = createInlineThinkSplitter();
+    expect(sp.processChunk("<think>x</think>visible")).toEqual({
+      content: "visible",
+      reasoning: "x",
+    });
+    expect(sp.flush()).toEqual({ content: "", reasoning: "" });
+  });
+
+  it("handles <think> tag split across two chunks (no leak)", () => {
+    const sp = createInlineThinkSplitter();
+    // Tag itself spans the chunk boundary
+    const r1 = sp.processChunk("hello <thi");
+    expect(r1.content).toBe("hello ");
+    expect(r1.reasoning).toBe("");
+    const r2 = sp.processChunk("nk>reasoning</think>tail");
+    expect(r2.content).toBe("tail");
+    expect(r2.reasoning).toBe("reasoning");
+  });
+
+  it("handles </think> closer split across chunks", () => {
+    const sp = createInlineThinkSplitter();
+    sp.processChunk("<think>thinking");
+    const r2 = sp.processChunk(" more</thi");
+    expect(r2.reasoning).toBe(" more");
+    expect(r2.content).toBe("");
+    const r3 = sp.processChunk("nk>visible");
+    expect(r3.reasoning).toBe("");
+    expect(r3.content).toBe("visible");
+  });
+
+  it("emits clean content chunks when no think tags present", () => {
+    const sp = createInlineThinkSplitter();
+    expect(sp.processChunk("plain ")).toEqual({ content: "plain ", reasoning: "" });
+    expect(sp.processChunk("text")).toEqual({ content: "text", reasoning: "" });
+  });
+
+  it("flush emits carry as content when stream ends mid-content with `<` prefix", () => {
+    const sp = createInlineThinkSplitter();
+    // ends with potential prefix that turned out to be just literal `<`
+    sp.processChunk("answer<");
+    const f = sp.flush();
+    expect(f.content).toBe("<");
+    expect(f.reasoning).toBe("");
+  });
+
+  it("flush emits carry as reasoning when stream ends inside think tag", () => {
+    const sp = createInlineThinkSplitter();
+    sp.processChunk("<think>incomplete</thi"); // </thi is a partial closer
+    const f = sp.flush();
+    // carry is "</thi", state is inThink → goes to reasoning as literal
+    expect(f.reasoning).toBe("</thi");
+    expect(f.content).toBe("");
+  });
+
+  it("multiple blocks streaming chunk by chunk", () => {
+    const sp = createInlineThinkSplitter();
+    sp.processChunk("<think>a</think>"); // → reasoning a
+    const r2 = sp.processChunk("between"); // → content
+    expect(r2.content).toBe("between");
+    expect(r2.reasoning).toBe("");
+    const r3 = sp.processChunk("<think>b</think>after"); // → reasoning b + content after
+    expect(r3.content).toBe("after");
+    expect(r3.reasoning).toBe("b");
+  });
+
+  it("processChunk is monotonic (no re-emit, no truncate, no skip)", () => {
+    const sp = createInlineThinkSplitter();
+    const collected = { content: "", reasoning: "" };
+    for (const piece of ["<thi", "nk>r1</thin", "k>m1<think>r2", "</think>m2"]) {
+      const r = sp.processChunk(piece);
+      collected.content += r.content;
+      collected.reasoning += r.reasoning;
+    }
+    const f = sp.flush();
+    collected.content += f.content;
+    collected.reasoning += f.reasoning;
+    expect(collected.content).toBe("m1m2");
+    expect(collected.reasoning).toBe("r1r2");
   });
 });

@@ -94,6 +94,7 @@ export interface GenericProviderSpec {
     dropStreamOptions?: boolean;
     dropParallelToolCalls?: boolean;
     mergeSystemMessages?: boolean;
+    extractThinkTags?: boolean;
   };
   docsUrl?: string;
   // minimax-compat: 顶层开关。models: [] 时让 resolveModel 返回 null，

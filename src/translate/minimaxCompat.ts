@@ -34,6 +34,14 @@ export interface MinimaxCompatFeatures {
   dropParallelToolCalls?: boolean;
   /** 合并所有 role:"system" 消息为单条前置（双换行拼接），符合 MiniMax 单 system 约束。 */
   mergeSystemMessages?: boolean;
+  /**
+   * 响应侧：把 chat completion content 里的 inline `<think>...</think>` 块切出来，
+   * 并入 `reasoning_content`。MiniMax M1/M2/M3 系列把 thinking 内嵌在 content 里
+   * （不像 DeepSeek/MiMo 用单独的 reasoning_content 字段），不开启的话 Codex 会
+   * 把 `<think>...</think>` 当作正常 assistant 文本显示出来。
+   * 部分 GLM/Qwen-thinking 模型也采用 inline `<think>` 格式，按需打开即可。
+   */
+  extractThinkTags?: boolean;
 }
 
 function isOn(
@@ -124,4 +132,156 @@ function mergeSystemMessagesInPlace(messages: ChatMessage[]): void {
     messages.push({ role: "system", content: systemContents.join("\n\n") });
   }
   messages.push(...nonSystem);
+}
+
+// =========================================================================
+// 响应侧：inline `<think>...</think>` 切分
+// -------------------------------------------------------------------------
+// MiniMax M1/M2/M3 系列把 reasoning 直接嵌在 chat completion 的 content 字段
+// 里（用 <think>...</think> 包裹），而 mimo2codex 翻译层默认把 reasoning 从
+// 单独的 `reasoning_content` 字段里读（DeepSeek / MiMo 风格）。不切分的话
+// Codex 客户端会把 `<think>...</think>` 当作正常 assistant 文本直接显示。
+//
+// 提供两套工具：
+//   - applyInlineThinkSplitToMessage(message)  非流式：原地切分 ChatMessage
+//   - createInlineThinkSplitter()              流式：跨 chunk 边界安全的有状态切分器
+//
+// 与请求侧 sanitizer 解耦：这两套工具不读 MinimaxCompatFeatures，调用方根据
+// features.extractThinkTags || features.minimaxCompat 决定要不要开。
+// =========================================================================
+
+/**
+ * 把字符串里所有完整的 `<think>...</think>` 块切出来。
+ *   - 匹配小写 `<think>` / `</think>`（MiniMax 实际用小写；其他厂家不规范的话可以
+ *     扩展，但当前 `g` 而非 `gi` 是为了避免 LLM 在普通文本里写出 `<Think>`
+ *     被误吞）
+ *   - 多个块按出现顺序拼接，双换行分隔
+ *   - 未闭合的 `<think>`（找不到 `</think>`）保留在 content 中作为字面文本，
+ *     避免把后续真实回答都吃掉
+ *   - 块外文本组成 content（多段时按出现顺序拼接，不加额外分隔）
+ */
+export function splitInlineThink(s: string): { reasoning: string; content: string } {
+  if (!s) return { reasoning: "", content: s ?? "" };
+  const re = /<think>([\s\S]*?)<\/think>/g;
+  let lastIndex = 0;
+  const reasoningParts: string[] = [];
+  const contentParts: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > lastIndex) contentParts.push(s.slice(lastIndex, m.index));
+    reasoningParts.push(m[1]);
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < s.length) contentParts.push(s.slice(lastIndex));
+  return {
+    reasoning: reasoningParts.join("\n\n"),
+    content: contentParts.join(""),
+  };
+}
+
+/**
+ * 在 ChatMessage 上原地切分 inline `<think>...</think>`：
+ *   - thinking 块合并到 `message.reasoning_content`（已有内容时拼接在前面）
+ *   - 剩余文本回填 `message.content`
+ *   - 没有 `<think>` 时一行不改
+ *   - `content` 不是 string 时（例如多模态 part 数组）跳过
+ */
+export function applyInlineThinkSplitToMessage(message: {
+  content?: string | unknown;
+  reasoning_content?: string | null;
+}): void {
+  if (typeof message.content !== "string") return;
+  const { reasoning, content } = splitInlineThink(message.content);
+  if (!reasoning) return;
+  const existing = typeof message.reasoning_content === "string" ? message.reasoning_content : "";
+  message.reasoning_content = existing ? existing + "\n\n" + reasoning : reasoning;
+  message.content = content;
+}
+
+/**
+ * 创建一个 stateful chunk splitter，处理 streaming inline `<think>...</think>`。
+ *
+ * 用法：
+ *   const sp = createInlineThinkSplitter();
+ *   // 每个上游 delta.content 进来时：
+ *   const { content, reasoning } = sp.processChunk(delta.content);
+ *   // 流结束时 flush：
+ *   const { content, reasoning } = sp.flush();
+ *
+ * 实现：维护一个 carry 缓冲——只要末尾可能是半截标签（包含 `<` 但还未确认是
+ * `<think>` / `</think>` 的完整序列），就 hold 住不下发，下个 chunk 进来时
+ * 拼接续算。stream 结束 flush 时若 carry 非空，按当前 inThink 状态归到
+ * reasoning 或 content。
+ *
+ * 注意：splitter 不区分大小写处理 —— 只识别小写 `<think>` / `</think>`（与
+ * splitInlineThink 一致）。
+ */
+export function createInlineThinkSplitter(): {
+  processChunk(text: string): { content: string; reasoning: string };
+  flush(): { content: string; reasoning: string };
+} {
+  let inThink = false;
+  let carry = ""; // 等待确认的尾部（可能包含 `<` 半截标签）
+
+  function maybeCarryTail(buf: string): { emit: string; carry: string } {
+    // 检查 buf 尾部是否可能是 `<think>` / `</think>` 的前缀（取决于 inThink 状态）。
+    // 半截：buf 末尾包含 `<` 且后续字符是某个目标标签的前缀。
+    // 保留长度上限：max("</think>".length) === 8 → 最多保留尾部 8 个字符。
+    const target = inThink ? "</think>" : "<think>";
+    const maxBack = Math.min(target.length - 1, buf.length);
+    for (let k = maxBack; k > 0; k--) {
+      const tail = buf.slice(buf.length - k);
+      if (target.startsWith(tail)) {
+        return { emit: buf.slice(0, buf.length - k), carry: tail };
+      }
+    }
+    return { emit: buf, carry: "" };
+  }
+
+  function processChunk(text: string): { content: string; reasoning: string } {
+    let buf = carry + text;
+    let outContent = "";
+    let outReasoning = "";
+
+    while (buf.length > 0) {
+      if (!inThink) {
+        const idx = buf.indexOf("<think>");
+        if (idx === -1) {
+          const { emit, carry: c } = maybeCarryTail(buf);
+          outContent += emit;
+          carry = c;
+          buf = "";
+        } else {
+          outContent += buf.slice(0, idx);
+          buf = buf.slice(idx + "<think>".length);
+          inThink = true;
+        }
+      } else {
+        const idx = buf.indexOf("</think>");
+        if (idx === -1) {
+          const { emit, carry: c } = maybeCarryTail(buf);
+          outReasoning += emit;
+          carry = c;
+          buf = "";
+        } else {
+          outReasoning += buf.slice(0, idx);
+          buf = buf.slice(idx + "</think>".length);
+          inThink = false;
+        }
+      }
+    }
+
+    return { content: outContent, reasoning: outReasoning };
+  }
+
+  function flush(): { content: string; reasoning: string } {
+    if (!carry) return { content: "", reasoning: "" };
+    const out = inThink
+      ? { content: "", reasoning: carry }  // 流断在 think 中段 → 当 reasoning 兜底
+      : { content: carry, reasoning: "" }; // 流断在普通文本中段 → 当 content 兜底
+    carry = "";
+    return out;
+  }
+
+  return { processChunk, flush };
 }
