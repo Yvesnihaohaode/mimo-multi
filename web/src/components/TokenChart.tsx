@@ -179,12 +179,26 @@ function rollupSeries(
   return result;
 }
 
+// Fixed tooltip width so the clamp math below can keep it inside the chart
+// without measuring the DOM (would race a CSS transition). Sized to fit both
+// the Chinese (命中率) and English ("Hit rate") labels with a 1.5M-token row,
+// plus padding.
+const TOOLTIP_WIDTH = 220;
+
 export function TokenChart({ data }: { data: TokenTimeseriesResponse }) {
   const { t } = useTranslation("dashboard");
   const { token } = theme.useToken();
   const colors = useMemo(() => paletteFromToken(token), [token]);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [hover, setHover] = useState<{ x: number; bucketIdx: number } | null>(null);
+  // containerW is the rendered pixel width of the <svg>, captured at hover
+  // time so the tooltip can be positioned in pixel space and clamped to the
+  // container's left/right edges (the SVG's viewBox is fixed at CHART_W but
+  // the rendered width depends on the responsive Card width).
+  const [hover, setHover] = useState<{
+    x: number;
+    bucketIdx: number;
+    containerW: number;
+  } | null>(null);
 
   const allSeries = useMemo(
     () =>
@@ -305,7 +319,7 @@ export function TokenChart({ data }: { data: TokenTimeseriesResponse }) {
     const idx =
       bucketCount === 1 ? 0 : Math.round((relative / plotW) * (bucketCount - 1));
     const clamped = Math.max(0, Math.min(bucketCount - 1, idx));
-    setHover({ x: xFor(clamped), bucketIdx: clamped });
+    setHover({ x: xFor(clamped), bucketIdx: clamped, containerW: rect.width });
   }
   function onMouseLeave() {
     setHover(null);
@@ -542,13 +556,26 @@ export function TokenChart({ data }: { data: TokenTimeseriesResponse }) {
         )}
       </svg>
 
-      {hover && !allEmpty && (
+      {hover && !allEmpty && (() => {
+        // Map svg-space x → container-pixel x, then clamp so the centered
+        // tooltip never overflows either edge of the chart. The 8px gutter
+        // gives the tooltip a small breathing room against the card border.
+        const GUTTER = 8;
+        const centerPx = (hover.x / CHART_W) * hover.containerW;
+        const rawLeft = centerPx - TOOLTIP_WIDTH / 2;
+        const maxLeft = Math.max(GUTTER, hover.containerW - TOOLTIP_WIDTH - GUTTER);
+        const leftPx = Math.max(GUTTER, Math.min(maxLeft, rawLeft));
+        return (
         <div
           style={{
             position: "absolute",
             top: 24,
-            left: `${(hover.x / CHART_W) * 100}%`,
-            transform: "translateX(-50%)",
+            left: leftPx,
+            width: TOOLTIP_WIDTH,
+            // Smooth follow as the hover moves between adjacent buckets. The
+            // bucket-snap already discretizes hover.x, so the transition is
+            // what makes the motion feel continuous instead of teleporting.
+            transition: "left 140ms ease-out",
             background: token.colorBgElevated,
             border: `1px solid ${borderColor}`,
             borderRadius: 6,
@@ -557,7 +584,6 @@ export function TokenChart({ data }: { data: TokenTimeseriesResponse }) {
             pointerEvents: "none",
             zIndex: 2,
             boxShadow: token.boxShadow,
-            minWidth: 160,
             color: fgColor,
           }}
         >
@@ -643,7 +669,8 @@ export function TokenChart({ data }: { data: TokenTimeseriesResponse }) {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       <div
         style={{
