@@ -49,6 +49,7 @@ export interface ParsedArgs {
   envKey?: boolean;
   dataDir?: string;
   noAdmin?: boolean;
+  noLoadEnv?: boolean;
   positional: string[];
   showHelp: boolean;
   showVersion: boolean;
@@ -102,6 +103,9 @@ export function parseArgv(argv: string[]): ParsedArgs {
         break;
       case "--no-admin":
         out.noAdmin = true;
+        break;
+      case "--no-load-env":
+        out.noLoadEnv = true;
         break;
       case "--help":
       case "-h":

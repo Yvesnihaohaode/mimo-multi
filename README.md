@@ -117,17 +117,17 @@ Requires Node.js ≥ 18.
 
 ### 2. Start the proxy
 
-> 💡 **Don't want to `export` every time?** Copy [.env.example](./.env.example) at the repo root to `.env` (gitignored), fill in your keys, then:
+> 💡 **Don't want to `export` every time?** Use the built-in loader (v0.2.8+, no clone, OS-agnostic):
 >
 > ```bash
-> source scripts/load-env.sh      # macOS / Linux / Git Bash
+> mimo2codex init                       # seeds ~/.mimo2codex/.env + .env.example
+> # open ~/.mimo2codex/.env in any editor and fill in your keys
+> mimo2codex                            # auto-loaded on every start; banner lists key names
 > ```
-> ```powershell
-> . .\scripts\load-env.ps1        # Windows PowerShell (note the leading dot)
-> ```
-> Then just run `mimo2codex`. The scripts never print the values — only which key names were loaded.
 >
-> 📖 Per-OS deep dive (PowerShell dot-source caveats, execution-policy fallback, Git Bash / WSL, cmd.exe workaround, `.env` syntax, FAQ): **[doc/env-setup.md](./doc/env-setup.md)**.
+> Why it works everywhere: mimo2codex reads `~/.mimo2codex/.env` in-process, independent of the shell — desktop launch, cmd.exe, schedulers and Docker all see the same keys. Pass `--no-load-env` to opt out. First bare `mimo2codex` with no `.env` and no shell key auto-bootstraps the file and prints next steps.
+>
+> 📖 Both methods compared (built-in loader vs sourcing the repo scripts), per-OS notes (PowerShell execution-policy fallback, Git Bash / WSL), `.env` syntax, FAQ: **[doc/env-setup.md](./doc/env-setup.md)**.
 
 **MiMo only** (default):
 

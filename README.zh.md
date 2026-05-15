@@ -116,17 +116,17 @@ irm https://raw.githubusercontent.com/7as0nch/mimo2codex/main/scripts/install.ps
 
 ### 2. 启动代理
 
-> 💡 **不想每次手动 export？** 复制根目录的 [.env.example](./.env.example) 为 `.env`（已 gitignore），填入你的 key，然后：
+> 💡 **不想每次手动 export？** 用内置加载器（v0.2.8+，无需拉仓库、跨系统通用）：
 >
 > ```bash
-> source scripts/load-env.sh      # macOS / Linux / Git Bash
+> mimo2codex init                       # 在 ~/.mimo2codex/ 下生成 .env + .env.example
+> # 编辑器打开 ~/.mimo2codex/.env 填入真 key
+> mimo2codex                            # 每次启动自动加载，banner 上会显示加载了哪些 key 名
 > ```
-> ```powershell
-> . .\scripts\load-env.ps1        # Windows PowerShell（注意前面的点号）
-> ```
-> 然后直接 `mimo2codex`。脚本不会打印 key 值，只列加载了哪些键名。
 >
-> 📖 更详细的分系统配置（PowerShell dot-source 注意事项、执行策略受阻兜底、Git Bash / WSL、cmd.exe 退路、`.env` 语法、常见问题）见 **[doc/env-setup.zh.md](./doc/env-setup.zh.md)**。
+> 关键点：mimo2codex 进程自己读 `~/.mimo2codex/.env`，跟 shell 无关——桌面端、cmd.exe、scheduler、Docker 一视同仁。不想自动加载？加 `--no-load-env`。第一次裸跑 `mimo2codex` 没 .env 也没 key 时会自动 bootstrap 并提示编辑。
+>
+> 📖 更详细的两种方式对照（内置加载器 vs 仓库脚本 source 到 shell）、分系统说明（PowerShell 执行策略受阻兜底、Git Bash / WSL）、`.env` 语法、常见问题 → **[doc/env-setup.zh.md](./doc/env-setup.zh.md)**。
 
 **只用 MiMo**（默认）：
 

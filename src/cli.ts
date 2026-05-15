@@ -10,6 +10,15 @@ import { resolveDataDir } from "./db/dataDir.js";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { loadDotenvFile } from "./util/dotenv.js";
+import {
+  bundledExamplePath,
+  dataDirEnvPath,
+  dataDirExamplePath,
+  ensureDataDirEnv,
+  refreshDataDirExample,
+} from "./setup/initEnv.js";
+import { PROVIDER_LIST } from "./providers/registry.js";
 
 // Discover the data-dir path WITHOUT creating it. Used for print-config /
 // print-cc-switch subcommands so a one-shot snippet print doesn't have
@@ -35,6 +44,7 @@ const HELP = `mimo2codex v${VERSION} — local proxy: Codex Responses API → Ch
 
 USAGE
   mimo2codex [options]
+  mimo2codex init
   mimo2codex print-config
   mimo2codex print-cc-switch
 
@@ -50,6 +60,8 @@ OPTIONS
                           env: MIMO2CODEX_DATA_DIR)
       --no-admin          disable the local admin UI + sqlite logging
                           (env: MIMO2CODEX_NO_ADMIN=1)
+      --no-load-env       skip auto-loading <data-dir>/.env on startup
+                          (default: auto-loaded if the file exists)
   -v, --verbose           log every request (env: MIMO2CODEX_VERBOSE=1)
   -V, --version           print version
   -h, --help              show this help
@@ -91,6 +103,10 @@ DEFAULTS BAKED IN (no flag needed)
         separately billed) and restart, or accept that web search isn't available
 
 SUBCOMMANDS
+  init                    bootstrap <data-dir>/.env + .env.example from the bundled
+                          template. Idempotent: refreshes .env.example, only creates
+                          .env if absent. Run this once after install, edit .env, then
+                          launch mimo2codex normally — keys auto-load on every start.
   print-config            print ~/.codex/auth.json + config.toml snippets (default;
                           works for Codex CLI and desktop app)
   print-config --env-key  print env-var-based variant (Codex CLI only — desktop app
@@ -114,6 +130,80 @@ EXAMPLES
   QWEN_API_KEY=sk-... mimo2codex --model qwen
 `;
 
+// Collect the env-var names every registered provider could pull a key from,
+// so we can detect "user already has a key in shell env, don't surprise them
+// with bootstrap" reliably across built-ins + generic providers.
+function knownProviderKeyEnvNames(): string[] {
+  const names = new Set<string>();
+  for (const p of PROVIDER_LIST) {
+    for (const k of p.envKeys) names.add(k);
+  }
+  // Generic single-instance env var (synthesized when GENERIC_BASE_URL is set).
+  names.add("GENERIC_API_KEY");
+  return [...names];
+}
+
+function hasAnyProviderKey(env: NodeJS.ProcessEnv): boolean {
+  return knownProviderKeyEnvNames().some((n) => !!env[n]);
+}
+
+// Auto-load <dataDir>/.env into process.env on startup. Returns the load
+// result so the banner can mention which keys came from the file. Silent
+// no-op when the file doesn't exist — bootstrap is handled separately.
+function tryAutoLoadEnv(dataDir: string): { path: string; loaded: string[] } | null {
+  const envPath = dataDirEnvPath(dataDir);
+  if (!existsSync(envPath)) return null;
+  try {
+    const result = loadDotenvFile(envPath, process.env);
+    return { path: envPath, loaded: result.loaded };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`load-env: failed to read ${envPath}: ${(err as Error).message}`);
+    return null;
+  }
+}
+
+function runInitSubcommand(parsed: ReturnType<typeof parseArgv>): void {
+  const dataDir = resolveDataDir(parsed.dataDir, process.env);
+  const bundled = bundledExamplePath();
+  if (!existsSync(bundled)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `error: bundled .env.example not found at ${bundled}. This usually means a broken install — try \`npm i -g mimo2codex\` again.`
+    );
+    process.exit(2);
+  }
+  const refreshed = refreshDataDirExample(dataDir);
+  const ensured = ensureDataDirEnv(dataDir);
+  // eslint-disable-next-line no-console
+  console.log(`mimo2codex init`);
+  // eslint-disable-next-line no-console
+  console.log(`  data dir:    ${dataDir}`);
+  // eslint-disable-next-line no-console
+  console.log(`  template:    ${refreshed.dest} (refreshed)`);
+  if (ensured.created) {
+    // eslint-disable-next-line no-console
+    console.log(`  env file:    ${ensured.envPath} (created from template)`);
+    // eslint-disable-next-line no-console
+    console.log("");
+    // eslint-disable-next-line no-console
+    console.log("Next:");
+    // eslint-disable-next-line no-console
+    console.log(`  1. Open ${ensured.envPath} and fill in your API key(s).`);
+    // eslint-disable-next-line no-console
+    console.log(`  2. Run \`mimo2codex\` — the file is auto-loaded on every start.`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`  env file:    ${ensured.envPath} (already exists — left untouched)`);
+    // eslint-disable-next-line no-console
+    console.log("");
+    // eslint-disable-next-line no-console
+    console.log(`The template at ${refreshed.dest} was refreshed; copy any new keys`);
+    // eslint-disable-next-line no-console
+    console.log(`into your .env manually if you want them.`);
+  }
+}
+
 function checkMimoHostMismatch(cfg: Config): string | null {
   // Catch the most common foot-gun: tp-* key sent at the pay-as-you-go host
   // (or sk-* key sent at the token-plan host) — usually because MIMO_BASE_URL
@@ -132,9 +222,19 @@ function checkMimoHostMismatch(cfg: Config): string | null {
   return null;
 }
 
-function printStartupBanner(cfg: Config, target: SnippetTarget): void {
+function printStartupBanner(
+  cfg: Config,
+  target: SnippetTarget,
+  autoLoadedEnv: { path: string; loaded: string[] } | null
+): void {
   // eslint-disable-next-line no-console
   console.log(`mimo2codex v${VERSION} listening on http://${cfg.host}:${cfg.port}`);
+  if (autoLoadedEnv) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `env file:    ${autoLoadedEnv.path} (${autoLoadedEnv.loaded.length} key${autoLoadedEnv.loaded.length === 1 ? "" : "s"}: ${autoLoadedEnv.loaded.join(", ") || "—"})`
+    );
+  }
   // eslint-disable-next-line no-console
   console.log(`provider:    ${cfg.defaultProviderId}`);
   // eslint-disable-next-line no-console
@@ -197,6 +297,13 @@ function main(): void {
     return;
   }
 
+  // `init` subcommand: bootstrap <data-dir>/.env + .env.example and exit.
+  // Always idempotent; safe to re-run.
+  if (parsed.positional[0] === "init") {
+    runInitSubcommand(parsed);
+    return;
+  }
+
   // Register generic providers from providers.json (or GENERIC_* env vars)
   // BEFORE we look at print-config / print-cc-switch subcommands, so those
   // can resolve `--model qwen` against a user-declared generic. We do NOT
@@ -214,6 +321,56 @@ function main(): void {
     !isSubcommand && adminEnabledForLoader
       ? resolveDataDir(parsed.dataDir, process.env)
       : nonCreatingDataDirCandidate(parsed.dataDir, process.env);
+
+  // Auto-load <dataDir>/.env into process.env before generic-provider
+  // resolution (envKey lookups) and buildConfig (key + base-url reads).
+  // Skipped for print-* subcommands (don't side-effect previews) and when
+  // --no-load-env is set. First-run bootstrap: when no .env exists AND no
+  // provider key is anywhere in env, copy the bundled template into place
+  // and exit with friendly instructions — that's the npm-install user's
+  // first interaction with mimo2codex.
+  let autoLoadedEnv: { path: string; loaded: string[] } | null = null;
+  if (!isSubcommand && !parsed.noLoadEnv && dataDirForLoader) {
+    autoLoadedEnv = tryAutoLoadEnv(dataDirForLoader);
+    if (!autoLoadedEnv && !hasAnyProviderKey(process.env)) {
+      // First-run UX: no .env file, no keys in shell env, user clearly hasn't
+      // set things up yet. Bootstrap and exit cleanly so they can edit.
+      const dataDir = resolveDataDir(parsed.dataDir, process.env);
+      const bundled = bundledExamplePath();
+      if (existsSync(bundled)) {
+        const ensured = ensureDataDirEnv(dataDir);
+        if (ensured.created) {
+          // eslint-disable-next-line no-console
+          console.log(`mimo2codex: first-run setup`);
+          // eslint-disable-next-line no-console
+          console.log(
+            `  Created ${ensured.envPath} from the bundled template (${dataDirExamplePath(dataDir)}).`
+          );
+          // eslint-disable-next-line no-console
+          console.log("");
+          // eslint-disable-next-line no-console
+          console.log("Next:");
+          // eslint-disable-next-line no-console
+          console.log(`  1. Open ${ensured.envPath} and fill in your API key(s).`);
+          // eslint-disable-next-line no-console
+          console.log(
+            `  2. Re-run \`mimo2codex\` — the file is auto-loaded on every start.`
+          );
+          // eslint-disable-next-line no-console
+          console.log("");
+          // eslint-disable-next-line no-console
+          console.log(
+            `Tip: \`mimo2codex --no-load-env\` skips the auto-load if you prefer shell-exported keys.`
+          );
+          return;
+        }
+      }
+      // Bundled template missing or bootstrap failed — fall through to the
+      // existing "missing API key" error from buildConfig, which already
+      // points users at the right docs.
+    }
+  }
+
   try {
     const generics = loadGenericProviders(process.env, dataDirForLoader);
     initRegistry(generics);
@@ -273,7 +430,7 @@ function main(): void {
     }
   }
 
-  printStartupBanner(cfg, resolveSnippetTarget(parsed.model));
+  printStartupBanner(cfg, resolveSnippetTarget(parsed.model), autoLoadedEnv);
 
   const server = startServer(cfg);
   server.on("listening", () => {

@@ -27,6 +27,7 @@
     "dist",
     "mimoskill",
     "doc",
+    ".env.example",
     "AGENTS.md",
     "README.md",
     "README.zh.md",
