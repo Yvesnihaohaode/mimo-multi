@@ -1,0 +1,40 @@
+{
+  "title": "聊天日志",
+  "filter": {
+    "providerLabel": "Provider",
+    "all": "全部"
+  },
+  "action": {
+    "refresh": "刷新",
+    "clearOld": "清理旧日志…"
+  },
+  "clearOld": {
+    "title": "清理旧日志",
+    "label": "删除多少天之前的日志",
+    "removed": "已删除 {{count}} 条"
+  },
+  "columns": {
+    "ts": "时间",
+    "provider": "Provider",
+    "clientModel": "Client model",
+    "upstreamModel": "Upstream model",
+    "endpoint": "端点",
+    "status": "状态",
+    "promptTokens": "Prompt tokens",
+    "completionTokens": "Completion tokens",
+    "totalTokens": "合计 tokens",
+    "tools": "工具",
+    "duration": "耗时",
+    "error": "错误"
+  },
+  "expand": {
+    "loading": "加载中…",
+    "empty": "无内容",
+    "requestBody": "请求内容",
+    "responseBody": "响应内容",
+    "notCaptured": "（未捕获）",
+    "chars": "{{count}} 字符"
+  },
+  "stream": "stream",
+  "empty": "暂无日志"
+}

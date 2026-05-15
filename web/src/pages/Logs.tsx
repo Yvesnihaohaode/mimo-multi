@@ -1,4 +1,22 @@
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  Empty,
+  InputNumber,
+  Modal,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
+import { ReloadOutlined, DeleteOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import { api, type LogDetail, type LogRow } from "../api/client";
 
 const PAGE_SIZE = 100;
@@ -13,17 +31,21 @@ function formatBody(text: string | null): string {
 }
 
 export function Logs() {
+  const { t } = useTranslation("logs");
+  const [messageApi, msgCtx] = message.useMessage();
+  const [modal, modalCtx] = Modal.useModal();
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [provider, setProvider] = useState<string>("");
   const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<number | null>(null);
   const [details, setDetails] = useState<Record<number, LogDetail>>({});
-  const [detailLoading, setDetailLoading] = useState<number | null>(null);
+  const [detailLoading, setDetailLoading] = useState<Set<number>>(new Set());
 
   async function load() {
     try {
       setError(null);
+      setLoading(true);
       const r = await api.logs({
         provider: provider || undefined,
         limit: PAGE_SIZE,
@@ -32,6 +54,8 @@ export function Logs() {
       setLogs(r.logs);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -40,204 +64,302 @@ export function Logs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, page]);
 
-  async function toggleRow(id: number) {
-    if (expanded === id) {
-      setExpanded(null);
-      return;
-    }
-    setExpanded(id);
-    if (!details[id]) {
-      setDetailLoading(id);
-      try {
-        const r = await api.logDetail(id);
-        setDetails((prev) => ({ ...prev, [id]: r.log }));
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setDetailLoading(null);
-      }
-    }
-  }
-
-  async function clearOld() {
-    const days = prompt("删除多少天之前的日志？", "7");
-    if (!days) return;
-    const before = Date.now() - Number(days) * 24 * 60 * 60 * 1000;
+  async function loadDetail(id: number) {
+    if (details[id] || detailLoading.has(id)) return;
+    setDetailLoading((prev) => new Set(prev).add(id));
     try {
-      const r = await api.deleteLogsBefore(before);
-      alert(`已删除 ${r.removed} 条`);
-      await load();
+      const r = await api.logDetail(id);
+      setDetails((prev) => ({ ...prev, [id]: r.log }));
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setDetailLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   }
 
+  function openClearOld() {
+    let days = 7;
+    modal.confirm({
+      title: t("clearOld.title"),
+      icon: <DeleteOutlined />,
+      content: (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ marginBottom: 6 }}>{t("clearOld.label")}</div>
+          <InputNumber
+            min={1}
+            max={3650}
+            defaultValue={days}
+            onChange={(v) => {
+              days = (v ?? 7) as number;
+            }}
+            style={{ width: 120 }}
+          />
+        </div>
+      ),
+      onOk: async () => {
+        const before = Date.now() - days * 24 * 60 * 60 * 1000;
+        try {
+          const r = await api.deleteLogsBefore(before);
+          messageApi.success(t("clearOld.removed", { count: r.removed }));
+          await load();
+        } catch (err) {
+          setError((err as Error).message);
+        }
+      },
+    });
+  }
+
+  const columns: ColumnsType<LogRow> = useMemo(
+    () => [
+      {
+        title: t("columns.ts"),
+        dataIndex: "ts",
+        key: "ts",
+        render: (ts: number) => new Date(ts).toLocaleString(),
+        width: 180,
+      },
+      {
+        title: t("columns.provider"),
+        dataIndex: "provider_id",
+        key: "provider_id",
+        render: (v: string) => <Tag>{v}</Tag>,
+        width: 110,
+      },
+      {
+        title: t("columns.clientModel"),
+        dataIndex: "client_model",
+        key: "client_model",
+        render: (v: string) => <code>{v}</code>,
+      },
+      {
+        title: t("columns.upstreamModel"),
+        dataIndex: "upstream_model",
+        key: "upstream_model",
+        render: (v: string) => <code>{v}</code>,
+      },
+      {
+        title: t("columns.endpoint"),
+        dataIndex: "endpoint",
+        key: "endpoint",
+        render: (v: string) => <code>{v}</code>,
+      },
+      {
+        title: t("columns.status"),
+        key: "status",
+        render: (_, row) => (
+          <Tag color={row.status_code >= 400 ? "error" : "success"}>
+            {row.status_code}
+            {row.stream ? ` · ${t("stream")}` : ""}
+          </Tag>
+        ),
+        width: 130,
+      },
+      {
+        title: t("columns.promptTokens"),
+        dataIndex: "prompt_tokens",
+        key: "prompt_tokens",
+        align: "right",
+        render: (v: number | null) => v ?? "—",
+      },
+      {
+        title: t("columns.completionTokens"),
+        dataIndex: "completion_tokens",
+        key: "completion_tokens",
+        align: "right",
+        render: (v: number | null) => v ?? "—",
+      },
+      {
+        title: t("columns.totalTokens"),
+        dataIndex: "total_tokens",
+        key: "total_tokens",
+        align: "right",
+        render: (v: number | null) => v ?? "—",
+      },
+      {
+        title: t("columns.tools"),
+        dataIndex: "tool_call_count",
+        key: "tool_call_count",
+        align: "right",
+        render: (v: number | null) => (v && v > 0 ? v : "—"),
+        width: 70,
+      },
+      {
+        title: t("columns.duration"),
+        dataIndex: "duration_ms",
+        key: "duration_ms",
+        align: "right",
+        render: (v: number) => `${v} ms`,
+        width: 100,
+      },
+      {
+        title: t("columns.error"),
+        key: "error",
+        render: (_, row) => {
+          if (!row.error_code && !row.error_snippet) return null;
+          const text = `${row.error_code ?? ""}${
+            row.error_snippet ? `: ${row.error_snippet}` : ""
+          }`;
+          return (
+            <Tooltip title={row.error_snippet ?? ""}>
+              <span
+                style={{
+                  display: "inline-block",
+                  maxWidth: 280,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  verticalAlign: "bottom",
+                }}
+              >
+                <code>{text}</code>
+              </span>
+            </Tooltip>
+          );
+        },
+      },
+    ],
+    [t]
+  );
+
   return (
-    <div>
-      <h2>聊天日志</h2>
+    <>
+      {msgCtx}
+      {modalCtx}
+      <Typography.Title level={2} style={{ marginTop: 0 }}>
+        {t("title")}
+      </Typography.Title>
 
       {error && (
-        <div className="banner err">
-          <span className="ic">!</span>
-          <div className="body">{error}</div>
-        </div>
+        <Alert
+          type="error"
+          showIcon
+          message={error}
+          closable
+          onClose={() => setError(null)}
+          style={{ marginBottom: 16 }}
+        />
       )}
 
-      <div className="row">
-        <span style={{ color: "var(--muted)", fontSize: 13 }}>过滤：</span>
-        <select value={provider} onChange={(e) => { setProvider(e.target.value); setPage(0); }}>
-          <option value="">全部</option>
-          <option value="mimo">mimo</option>
-          <option value="deepseek">deepseek</option>
-        </select>
-        <button onClick={() => load()} className="secondary">
-          刷新
-        </button>
-        <span className="grow" />
-        <button onClick={clearOld} className="secondary">
-          清理旧日志…
-        </button>
-      </div>
+      <Card>
+        <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
+          <Space>
+            <span style={{ color: "var(--muted)", fontSize: 13 }}>
+              {t("filter.providerLabel")}
+            </span>
+            <Select
+              value={provider}
+              style={{ minWidth: 160 }}
+              onChange={(v) => {
+                setProvider(v);
+                setPage(0);
+              }}
+              options={[
+                { value: "", label: t("filter.all") },
+                { value: "mimo", label: "mimo" },
+                { value: "deepseek", label: "deepseek" },
+              ]}
+            />
+            <Button icon={<ReloadOutlined />} onClick={() => void load()}>
+              {t("action.refresh")}
+            </Button>
+          </Space>
+          <Button danger icon={<DeleteOutlined />} onClick={openClearOld}>
+            {t("action.clearOld")}
+          </Button>
+        </Space>
 
-      {logs.length > 0 ? (
-        <>
-          <table>
-            <thead>
-              <tr>
-                <th>时间</th>
-                <th>Provider</th>
-                <th>Client model</th>
-                <th>Upstream model</th>
-                <th>端点</th>
-                <th>状态</th>
-                <th style={{ textAlign: "right" }}>Prompt tokens</th>
-                <th style={{ textAlign: "right" }}>Completion tokens</th>
-                <th style={{ textAlign: "right" }}>合计 tokens</th>
-                <th style={{ textAlign: "right" }}>工具</th>
-                <th style={{ textAlign: "right" }}>耗时</th>
-                <th>错误</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((l) => {
-                const isOpen = expanded === l.id;
-                const detail = details[l.id];
+        <Table<LogRow>
+          rowKey="id"
+          dataSource={logs}
+          columns={columns}
+          loading={loading}
+          size="middle"
+          pagination={{
+            current: page + 1,
+            pageSize: PAGE_SIZE,
+            onChange: (p) => setPage(p - 1),
+            showSizeChanger: false,
+            // Total is unknown server-side; show a hasNextPage-style pager
+            total: page * PAGE_SIZE + logs.length + (logs.length === PAGE_SIZE ? PAGE_SIZE : 0),
+          }}
+          locale={{ emptyText: <Empty description={t("empty")} /> }}
+          expandable={{
+            onExpand: (expanded, row) => {
+              if (expanded) void loadDetail(row.id);
+            },
+            expandedRowRender: (row) => {
+              const detail = details[row.id];
+              if (!detail) {
                 return (
-                  <Fragment key={l.id}>
-                    <tr
-                      onClick={() => toggleRow(l.id)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <td>
-                        <span style={{ marginRight: 6, color: "var(--muted)" }}>
-                          {isOpen ? "▾" : "▸"}
-                        </span>
-                        {new Date(l.ts).toLocaleString()}
-                      </td>
-                      <td>
-                        <span className="tag">{l.provider_id}</span>
-                      </td>
-                      <td className="mono">{l.client_model}</td>
-                      <td className="mono">{l.upstream_model}</td>
-                      <td className="mono">{l.endpoint}</td>
-                      <td>
-                        <span className={`tag ${l.status_code >= 400 ? "err" : "ok"}`}>
-                          {l.status_code}
-                          {l.stream ? " · stream" : ""}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {l.prompt_tokens ?? "—"}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {l.completion_tokens ?? "—"}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {l.total_tokens ?? "—"}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {l.tool_call_count && l.tool_call_count > 0 ? l.tool_call_count : "—"}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{l.duration_ms} ms</td>
-                      <td className="mono" style={{ maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={l.error_snippet ?? ""}>
-                        {l.error_code ?? ""}
-                        {l.error_snippet ? `: ${l.error_snippet}` : ""}
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr>
-                        <td colSpan={12} style={{ background: "var(--bg-soft, #f7f7f9)", padding: 12 }}>
-                          {detailLoading === l.id && !detail ? (
-                            <div style={{ color: "var(--muted)" }}>加载中…</div>
-                          ) : detail ? (
-                            <div style={{ display: "grid", gap: 12 }}>
-                              <BodyBlock title="请求内容" body={detail.request_body} />
-                              <BodyBlock title="响应内容" body={detail.response_body} />
-                            </div>
-                          ) : (
-                            <div style={{ color: "var(--muted)" }}>无内容</div>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                  <Typography.Text type="secondary">
+                    {detailLoading.has(row.id) ? t("expand.loading") : t("expand.empty")}
+                  </Typography.Text>
                 );
-              })}
-            </tbody>
-          </table>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button
-              className="secondary"
-              disabled={page === 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-            >
-              ← 上一页
-            </button>
-            <span style={{ color: "var(--muted)" }}>第 {page + 1} 页</span>
-            <button
-              className="secondary"
-              disabled={logs.length < PAGE_SIZE}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              下一页 →
-            </button>
-          </div>
-        </>
-      ) : (
-        <div className="empty">暂无日志</div>
-      )}
-    </div>
+              }
+              return (
+                <Space direction="vertical" style={{ width: "100%" }} size={12}>
+                  <BodyBlock title={t("expand.requestBody")} body={detail.request_body} t={t} />
+                  <BodyBlock title={t("expand.responseBody")} body={detail.response_body} t={t} />
+                </Space>
+              );
+            },
+          }}
+        />
+      </Card>
+    </>
   );
 }
 
-function BodyBlock({ title, body }: { title: string; body: string | null }) {
+function BodyBlock({
+  title,
+  body,
+  t,
+}: {
+  title: string;
+  body: string | null;
+  t: ReturnType<typeof useTranslation<"logs">>["t"];
+}) {
   if (!body) {
     return (
       <div>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>{title}</div>
-        <div style={{ color: "var(--muted)", fontSize: 13 }}>（未捕获）</div>
+        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+          {t("expand.notCaptured")}
+        </Typography.Text>
       </div>
     );
   }
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 4,
+        }}
+      >
         <span style={{ fontWeight: 600 }}>{title}</span>
-        <span style={{ color: "var(--muted)", fontSize: 12 }}>{body.length.toLocaleString()} chars</span>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {t("expand.chars", { count: body.length })}
+        </Typography.Text>
       </div>
       <pre
         className="mono"
         style={{
           maxHeight: 360,
           overflow: "auto",
-          background: "var(--bg, #fff)",
-          border: "1px solid var(--border, #ddd)",
-          borderRadius: 4,
           padding: 8,
           fontSize: 12,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
           margin: 0,
+          border: "1px solid var(--ant-color-border, #d9d9d9)",
+          borderRadius: 4,
         }}
       >
         {formatBody(body)}

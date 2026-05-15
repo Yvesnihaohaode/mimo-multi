@@ -1,0 +1,40 @@
+{
+  "title": "Chat Logs",
+  "filter": {
+    "providerLabel": "Provider",
+    "all": "All"
+  },
+  "action": {
+    "refresh": "Refresh",
+    "clearOld": "Clear old logs…"
+  },
+  "clearOld": {
+    "title": "Clear old logs",
+    "label": "Delete logs older than (days)",
+    "removed": "Removed {{count}} entries"
+  },
+  "columns": {
+    "ts": "Time",
+    "provider": "Provider",
+    "clientModel": "Client model",
+    "upstreamModel": "Upstream model",
+    "endpoint": "Endpoint",
+    "status": "Status",
+    "promptTokens": "Prompt tokens",
+    "completionTokens": "Completion tokens",
+    "totalTokens": "Total tokens",
+    "tools": "Tools",
+    "duration": "Duration",
+    "error": "Error"
+  },
+  "expand": {
+    "loading": "Loading…",
+    "empty": "No content",
+    "requestBody": "Request body",
+    "responseBody": "Response body",
+    "notCaptured": "(not captured)",
+    "chars": "{{count}} chars"
+  },
+  "stream": "stream",
+  "empty": "No logs yet"
+}
