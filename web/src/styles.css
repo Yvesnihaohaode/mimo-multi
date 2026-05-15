@@ -22,8 +22,10 @@
 html, body, #root {
   height: 100%;
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
+  /* Background & text color are now provided by antd ConfigProvider
+     so the active theme (dark/light/auto) drives the layout chrome.
+     Page-level classes below still consume the CSS vars until the
+     per-page antd migration lands (see plan PR-2 ~ PR-5). */
 }
 
 a {

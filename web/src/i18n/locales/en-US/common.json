@@ -1,0 +1,29 @@
+{
+  "save": "Save",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "delete": "Delete",
+  "edit": "Edit",
+  "create": "Create",
+  "refresh": "Refresh",
+  "search": "Search",
+  "copy": "Copy",
+  "copied": "Copied",
+  "close": "Close",
+  "ok": "OK",
+  "loading": "Loading…",
+  "empty": "No data",
+  "yes": "Yes",
+  "no": "No",
+  "enable": "Enable",
+  "disable": "Disable",
+  "enabled": "Enabled",
+  "disabled": "Disabled",
+  "success": "Success",
+  "error": "Error",
+  "footer": {
+    "feedback": "Feedback / Issues",
+    "docs": "Docs",
+    "license": "MIT License"
+  }
+}
