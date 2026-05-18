@@ -36,12 +36,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }} # 这是 GitHub 自动提供的 token，无需手动配置
 
-      # 4. 自动提取 Docker 标签和元数据 (比如 latest, v1.0 等)
+      # 4. 自动提取 Docker 标签和元数据
+      # 默认 metadata-action 不会生成 :latest，这里显式配齐：
+      #   - push 到 main          → :main + :latest
+      #   - push tag v0.2.15      → :0.2.15 + :0.2 + :latest（自动覆盖 main 版的 :latest）
+      #   - PR                    → :pr-N（只 build 不 push）
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
       # 5. 构建并推送多架构镜像
       - name: Build and push Docker image
