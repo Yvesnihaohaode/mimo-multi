@@ -163,6 +163,7 @@ export const mimo: Provider = {
       enableWebSearch: !ctx.runtime.flags.isTokenPlan,
       imageDropDir: ctx.dataDir,
       disableThinking: ctx.disableThinking,
+      forceHighEffort: ctx.forceHighEffort,
     });
     return normalizeMimoBody(chat, req.model);
   },

@@ -275,6 +275,8 @@ Full field reference, `wireApi: "responses"` passthrough mode, copy-pasteable ex
 
 > **SenseNova (商汤日日新)** is auto-detected in the admin UI: typing `https://token.sensenova.cn/v1` as baseUrl applies the recommended features — see [doc/sensenova.md](./doc/sensenova.md).
 
+> **Kimi (Moonshot)** is auto-detected when you type `https://api.moonshot.cn/v1` (default applies `dropReasoningEffort` so the "Force high reasoning effort" admin switch doesn't break Kimi) — see [doc/kimi.md](./doc/kimi.md).
+
 > Existing mimo / deepseek users with no `providers.json` **are not affected** — default provider stays `mimo` and behavior is byte-identical.
 
 ## CLI flags

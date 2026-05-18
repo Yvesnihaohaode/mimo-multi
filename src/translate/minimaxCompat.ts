@@ -81,6 +81,13 @@ export interface MinimaxCompatFeatures {
    * 走 chat 时也不发这些 type，所以默认不放进 `minimaxCompat: true` 一键预设。
    */
   dropNonFunctionTools?: boolean;
+  /**
+   * 删 `reasoning_effort` 整个字段。Kimi (Moonshot) 不识别此字段，靠 `thinking:{type:"enabled"}`
+   * 控制思考；如果客户端走 mimo2codex 时勾了"强制高强度思考"开关，reqToChat 会注 reasoning_effort
+   * "high"，对 Kimi 是未知字段（多数情况忽略，但保守起见 strip 掉避免上游严格校验时 400）。
+   * 同时 strip 客户端可能误传的值。**不**纳入 `minimaxCompat: true` 一键预设。
+   */
+  dropReasoningEffort?: boolean;
 }
 
 // minimaxCompat: true 默认包揽的子开关白名单。把潜在副作用大的开关
@@ -169,6 +176,11 @@ export function applyMinimaxCompat(
     if (chat.tools.length === 0) {
       delete (chat as { tools?: unknown }).tools;
     }
+  }
+
+  // 9. 删 reasoning_effort（Kimi 等不识别该字段；靠 thinking:{enabled/disabled} 控制思考）
+  if (isOn(features, "dropReasoningEffort")) {
+    delete (chat as { reasoning_effort?: unknown }).reasoning_effort;
   }
 
   return chat;

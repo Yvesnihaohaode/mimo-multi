@@ -52,8 +52,9 @@ interface FormValues extends GenericProviderSpec {
   featExtractThinkTags: boolean;
   featDropResponseFormat: boolean;
   featDropNonFunctionTools: boolean;
-  // 单选 "" / "sensenova" / "minimax"。表单用 string 绑定，写回 spec 时 "" → 不写字段。
-  featEnhanceErrorPreset: "" | "sensenova" | "minimax";
+  featDropReasoningEffort: boolean;
+  // 单选 "" / "sensenova" / "minimax" / "kimi"。"" → 写回时不写字段。
+  featEnhanceErrorPreset: "" | "sensenova" | "minimax" | "kimi" | "kimi";
   // minimax-compat: 顶层 forceDefaultModel 是非 features 字段，单独平铺也是为了表单绑定方便。
   featForceDefaultModel: boolean;
 }
@@ -82,6 +83,7 @@ function emptyFormValues(): FormValues {
     featExtractThinkTags: false,
     featDropResponseFormat: false,
     featDropNonFunctionTools: false,
+    featDropReasoningEffort: false,
     featEnhanceErrorPreset: "",
     featForceDefaultModel: false,
     docsUrl: "",
@@ -111,6 +113,7 @@ function specToFormValues(spec: GenericProviderSpec): FormValues {
       extractThinkTags: !!spec.features?.extractThinkTags,
       dropResponseFormat: !!spec.features?.dropResponseFormat,
       dropNonFunctionTools: !!spec.features?.dropNonFunctionTools,
+      dropReasoningEffort: !!spec.features?.dropReasoningEffort,
       enhanceErrorPreset: spec.features?.enhanceErrorPreset,
     },
     forceParallelToolCalls: !!spec.features?.forceParallelToolCalls,
@@ -125,9 +128,11 @@ function specToFormValues(spec: GenericProviderSpec): FormValues {
     featExtractThinkTags: !!spec.features?.extractThinkTags,
     featDropResponseFormat: !!spec.features?.dropResponseFormat,
     featDropNonFunctionTools: !!spec.features?.dropNonFunctionTools,
+    featDropReasoningEffort: !!spec.features?.dropReasoningEffort,
     featEnhanceErrorPreset:
       spec.features?.enhanceErrorPreset === "sensenova" ||
-      spec.features?.enhanceErrorPreset === "minimax"
+      spec.features?.enhanceErrorPreset === "minimax" ||
+      spec.features?.enhanceErrorPreset === "kimi"
         ? spec.features.enhanceErrorPreset
         : "",
     featForceDefaultModel: !!spec.forceDefaultModel,
@@ -165,6 +170,7 @@ function formValuesToSpec(form: FormValues): GenericProviderSpec {
   if (form.featExtractThinkTags) features.extractThinkTags = true;
   if (form.featDropResponseFormat) features.dropResponseFormat = true;
   if (form.featDropNonFunctionTools) features.dropNonFunctionTools = true;
+  if (form.featDropReasoningEffort) features.dropReasoningEffort = true;
   if (form.featEnhanceErrorPreset) features.enhanceErrorPreset = form.featEnhanceErrorPreset;
   if (Object.keys(features).length > 0) {
     // GenericProviderSpec.features 期望具体字段类型，运行时这里就是匹配的，断言收口。
@@ -544,6 +550,7 @@ const FEATURE_BOOLEAN_KEYS: Array<keyof FormValues> = [
   "featExtractThinkTags",
   "featDropResponseFormat",
   "featDropNonFunctionTools",
+  "featDropReasoningEffort",
   "featForceDefaultModel",
 ];
 
@@ -582,7 +589,13 @@ function mapPresetFeaturesToFormFlags(
     patch.featDropResponseFormat = features.dropResponseFormat;
   if (typeof features.dropNonFunctionTools === "boolean")
     patch.featDropNonFunctionTools = features.dropNonFunctionTools;
-  if (features.enhanceErrorPreset === "sensenova" || features.enhanceErrorPreset === "minimax") {
+  if (typeof features.dropReasoningEffort === "boolean")
+    patch.featDropReasoningEffort = features.dropReasoningEffort;
+  if (
+    features.enhanceErrorPreset === "sensenova" ||
+    features.enhanceErrorPreset === "minimax" ||
+    features.enhanceErrorPreset === "kimi"
+  ) {
     patch.featEnhanceErrorPreset = features.enhanceErrorPreset;
   }
   return patch;
@@ -629,8 +642,8 @@ function ProviderFormModal({
   // useState 是 React 自己的 setter，写完立刻在下次 render 生效，没有内部状态机干扰。
   // form store 仍通过 setFieldsValue 同步，submit 路径走 hidden Form.Item 让 validateFields
   // 能拿到该字段，与既有 formValuesToSpec 接口保持兼容。
-  const [presetRadioValue, setPresetRadioValue] = useState<"" | "sensenova" | "minimax">(
-    (initialValues.featEnhanceErrorPreset ?? "") as "" | "sensenova" | "minimax",
+  const [presetRadioValue, setPresetRadioValue] = useState<"" | "sensenova" | "minimax" | "kimi">(
+    (initialValues.featEnhanceErrorPreset ?? "") as "" | "sensenova" | "minimax" | "kimi",
   );
   // "高级（细粒度兼容子开关）"折叠状态。自动跟随预设：none → 展开，预设 → 折叠；
   // 用户也可手动展开/收起；切换预设时强制同步（覆盖手动 state，因为切预设是清零信号）。
@@ -660,15 +673,15 @@ function ProviderFormModal({
     setAutoApplied(preset.displayName);
     // 同步给 Radio 的 useState（form.setFieldsValue 写 store 但 Radio value 来自 useState）
     const presetId = preset.recommendedSpec.features.enhanceErrorPreset;
-    if (presetId === "sensenova" || presetId === "minimax") {
+    if (presetId === "sensenova" || presetId === "minimax" || presetId === "kimi") {
       setPresetRadioValue(presetId);
     }
   }, [watchedBaseUrl, watchedModel, presets, form]);
 
   // Radio onChange：useState 主管 UI，setFieldsValue 同步 form store
   function onPresetRadioChange(newVal: string): void {
-    const v: "" | "sensenova" | "minimax" =
-      newVal === "sensenova" || newVal === "minimax" ? newVal : "";
+    const v: "" | "sensenova" | "minimax" | "kimi" =
+      newVal === "sensenova" || newVal === "minimax" || newVal === "kimi" ? newVal : "";
     // 1. 立即更新 useState（Radio 高亮立刻切换，无中间态）
     setPresetRadioValue(v);
     // 2. 同步 form store（hidden Form.Item 让 validateFields 也能拿到）
@@ -888,6 +901,7 @@ function ProviderFormModal({
             <Radio.Button value="">{t("form.fields.enhanceErrorPresetNone")}</Radio.Button>
             <Radio.Button value="sensenova">sensenova</Radio.Button>
             <Radio.Button value="minimax">minimax</Radio.Button>
+            <Radio.Button value="kimi">kimi</Radio.Button>
           </Radio.Group>
         </Form.Item>
 
@@ -1002,6 +1016,14 @@ function ProviderFormModal({
                         <code>dropNonFunctionTools</code>{" "}
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                           · {t("form.fields.dropNonFunctionToolsSub")}
+                        </Typography.Text>
+                      </Checkbox>
+                    </Form.Item>
+                    <Form.Item name="featDropReasoningEffort" valuePropName="checked" noStyle>
+                      <Checkbox>
+                        <code>dropReasoningEffort</code>{" "}
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          · {t("form.fields.dropReasoningEffortSub")}
                         </Typography.Text>
                       </Checkbox>
                     </Form.Item>

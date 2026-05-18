@@ -46,6 +46,17 @@ function resolveDisableThinking(cfg: Config): boolean {
   }
 }
 
+// forceHighEffort 解析：admin settings DB → false。当前没暴露 CLI flag（如有需求再加）。
+// 与 disableThinking 不同维度：disableThinking=true 时本开关被忽略。
+function resolveForceHighEffort(cfg: Config): boolean {
+  if (!cfg.adminEnabled) return false;
+  try {
+    return getSetting("thinking.forceHighEffort") === "1";
+  } catch {
+    return false;
+  }
+}
+
 const KEEPALIVE_INTERVAL_MS = 15_000;
 
 async function readJsonBody<T>(req: IncomingMessage, maxBytes = 16 * 1024 * 1024): Promise<T> {
@@ -396,6 +407,7 @@ async function handleResponses(
     exposeReasoning: cfg.exposeReasoning,
     dataDir: cfg.dataDir,
     disableThinking: resolveDisableThinking(cfg),
+    forceHighEffort: resolveForceHighEffort(cfg),
   });
   chat.model = upstreamModel;
   chat.stream = !!payload.stream;
@@ -961,6 +973,7 @@ async function handleChatPassthrough(
     runtime,
     exposeReasoning: cfg.exposeReasoning,
     disableThinking: resolveDisableThinking(cfg),
+    forceHighEffort: resolveForceHighEffort(cfg),
   });
   body.model = upstreamModel;
 

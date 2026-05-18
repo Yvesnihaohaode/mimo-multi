@@ -244,6 +244,28 @@ describe("applyMinimaxCompat — individual switches", () => {
     applyMinimaxCompat(chat, { dropNonFunctionTools: true });
     expect("tools" in chat).toBe(false);
   });
+
+  it("dropReasoningEffort strips the field; other fields unchanged", () => {
+    const chat: ChatRequest = {
+      model: "kimi-k2.6",
+      messages: [{ role: "user", content: "hi" }],
+      reasoning_effort: "high",
+      temperature: 0.7,
+    } as ChatRequest;
+    applyMinimaxCompat(chat, { dropReasoningEffort: true });
+    expect("reasoning_effort" in chat).toBe(false);
+    expect(chat.temperature).toBe(0.7);
+  });
+
+  it("dropReasoningEffort is NOT in minimaxCompat preset whitelist", () => {
+    const chat: ChatRequest = {
+      model: "anything",
+      messages: [{ role: "user", content: "hi" }],
+      reasoning_effort: "high",
+    } as ChatRequest;
+    applyMinimaxCompat(chat, { minimaxCompat: true });
+    expect(chat.reasoning_effort).toBe("high");
+  });
 });
 
 describe("applyMinimaxCompat — mergeSystemMessages edge cases", () => {

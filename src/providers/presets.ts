@@ -10,7 +10,7 @@
 // 里的 switch。两处都改完，前端 watcher 自动就能识别新厂商，零前端代码改动。
 import type { ProviderEnhancedError } from "./types.js";
 
-export type ProviderPresetId = "minimax" | "sensenova";
+export type ProviderPresetId = "minimax" | "sensenova" | "kimi";
 
 export interface ProviderPreset {
   id: ProviderPresetId;
@@ -67,6 +67,23 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
         // 一键预设涵盖 dropNullStrict / dropNullContent / dropToolChoiceAuto /
         // mergeSystemMessages / extractThinkTags。
         minimaxCompat: true,
+      },
+    },
+  },
+  {
+    id: "kimi",
+    displayName: "Kimi (Moonshot)",
+    matchBaseUrl: ["moonshot.cn", "moonshot.ai", "platform.kimi"],
+    matchModelPrefix: ["kimi-", "moonshot-v1-"],
+    recommendedSpec: {
+      baseUrl: "https://api.moonshot.cn/v1",
+      defaultModel: "kimi-k2.6",
+      docsUrl: "https://platform.kimi.com/docs",
+      features: {
+        // Kimi 不识别 reasoning_effort（用 thinking:{enabled/disabled} 控制思考）。
+        // 如果用户开了 admin UI 的"强制高强度思考"，reqToChat 会注 reasoning_effort，
+        // 这里把它删掉避免风险（多数情况 Kimi 只是忽略，但严格上游可能 400）。
+        dropReasoningEffort: true,
       },
     },
   },

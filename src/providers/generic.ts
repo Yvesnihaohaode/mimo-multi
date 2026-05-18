@@ -166,6 +166,7 @@ export function createGenericProvider(spec: GenericProviderSpec): Provider {
         enableWebSearch: !!features.webSearch,
         imageDropDir: ctx.dataDir,
         disableThinking: ctx.disableThinking,
+        forceHighEffort: ctx.forceHighEffort,
       });
       // Generic OpenAI-compat upstreams don't understand MiMo's `thinking` family —
       // strip it. 然后**自己**翻成 sensenova 等接受的 reasoning_effort:"none"，

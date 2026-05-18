@@ -276,35 +276,57 @@ async function handleApi(ctx: RouteContext): Promise<void> {
   }
 
   // GET /admin/api/thinking-state
-  // PUT /admin/api/thinking-state body { disabled: boolean }
-  // PUT 写 settings.thinking.disabled；GET 返回当前 effective 状态 + cli override 标志。
-  // CLI flag (--disable-thinking) 优先于 settings：cliOverride = true/false 表示用户已用 CLI/env
-  // 显式控制，UI 改也不生效；null = CLI 未设，UI 改即时生效。
+  // PUT /admin/api/thinking-state body { disabled?: boolean, forceHighEffort?: boolean }
+  // PUT 写 settings.thinking.disabled / .forceHighEffort（同一请求可只改一个，未传字段不变）。
+  // GET 返回两个开关的 effective + cliOverride 标志。disableThinking 受 CLI flag 控制；
+  // forceHighEffort 目前仅 settings 控制。
   if (pathname === "/admin/api/thinking-state") {
     if (req.method === "GET") {
       const cliOverride = cfg.disableThinkingFromCli ?? null;
-      const fromSetting = (() => {
+      const disabledFromSetting = (() => {
         try {
           return getSetting("thinking.disabled") === "1";
         } catch {
           return false;
         }
       })();
-      const effective = cliOverride !== null ? cliOverride : fromSetting;
+      const forceHighEffortFromSetting = (() => {
+        try {
+          return getSetting("thinking.forceHighEffort") === "1";
+        } catch {
+          return false;
+        }
+      })();
+      const effective = cliOverride !== null ? cliOverride : disabledFromSetting;
       return sendJson(res, 200, {
         effective,
         cliOverride,
-        setting: fromSetting,
+        setting: disabledFromSetting,
+        forceHighEffort: forceHighEffortFromSetting,
       });
     }
     if (req.method === "PUT") {
-      const body = await readJsonBody<{ disabled?: unknown }>(req);
-      if (typeof body.disabled !== "boolean") {
-        return sendError(res, 400, "invalid_body", "body.disabled must be boolean");
+      const body = await readJsonBody<{ disabled?: unknown; forceHighEffort?: unknown }>(req);
+      let changed = false;
+      if (typeof body.disabled === "boolean") {
+        setSetting("thinking.disabled", body.disabled ? "1" : "0");
+        log.info(`thinking.disabled set to ${body.disabled} via admin UI`);
+        changed = true;
       }
-      setSetting("thinking.disabled", body.disabled ? "1" : "0");
-      log.info(`thinking.disabled set to ${body.disabled} via admin UI`);
-      return sendJson(res, 200, { ok: true, disabled: body.disabled });
+      if (typeof body.forceHighEffort === "boolean") {
+        setSetting("thinking.forceHighEffort", body.forceHighEffort ? "1" : "0");
+        log.info(`thinking.forceHighEffort set to ${body.forceHighEffort} via admin UI`);
+        changed = true;
+      }
+      if (!changed) {
+        return sendError(
+          res,
+          400,
+          "invalid_body",
+          "body must include at least one of: disabled (boolean), forceHighEffort (boolean)",
+        );
+      }
+      return sendJson(res, 200, { ok: true });
     }
     return sendError(res, 405, "method_not_allowed", "use GET or PUT");
   }

@@ -274,6 +274,8 @@ mimo2codex --model generic
 
 > **商汤日日新 (SenseNova)** 走 admin UI 新增 generic provider 时输入 `https://token.sensenova.cn/v1` 会被自动识别并套用推荐 features——详见 [doc/sensenova.zh.md](./doc/sensenova.zh.md)。
 
+> **Kimi (Moonshot)** 输入 `https://api.moonshot.cn/v1` 会被自动识别为 Kimi（默认套 `dropReasoningEffort` 避免与"强制高强度思考"开关冲突）——详见 [doc/kimi.zh.md](./doc/kimi.zh.md)。
+
 > 既有 mimo / deepseek 用户不写 `providers.json` 时**完全不受影响**——默认仍是 mimo，所有行为字节级一致。
 
 ## CLI 参数速查

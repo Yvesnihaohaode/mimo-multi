@@ -63,6 +63,10 @@ export function CodexEnable() {
   const [thinkingDisabled, setThinkingDisabled] = useState<boolean | null>(null);
   const [thinkingCliOverridden, setThinkingCliOverridden] = useState<boolean>(false);
   const [thinkingSaving, setThinkingSaving] = useState<boolean>(false);
+  // thinking.forceHighEffort：独立开关。Codex 没传 reasoning.effort 时是否兜底注 "high"。
+  // 与 thinkingDisabled 不同维度；关思考时被忽略。
+  const [forceHighEffort, setForceHighEffort] = useState<boolean | null>(null);
+  const [forceHighEffortSaving, setForceHighEffortSaving] = useState<boolean>(false);
 
   async function doProbe(target: CodexTarget) {
     const key = `${target.providerId}::${target.modelId}`;
@@ -103,6 +107,7 @@ export function CodexEnable() {
       if (think) {
         setThinkingDisabled(think.effective);
         setThinkingCliOverridden(think.cliOverride !== null);
+        setForceHighEffort(think.forceHighEffort);
       }
     } catch (err) {
       setError((err as Error).message);
@@ -118,6 +123,18 @@ export function CodexEnable() {
       setError((err as Error).message);
     } finally {
       setThinkingSaving(false);
+    }
+  }
+
+  async function doToggleForceHighEffort(enabled: boolean): Promise<void> {
+    setForceHighEffortSaving(true);
+    try {
+      await api.setForceHighEffort(enabled);
+      setForceHighEffort(enabled);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setForceHighEffortSaving(false);
     }
   }
 
@@ -347,8 +364,9 @@ export function CodexEnable() {
 
       {thinkingDisabled !== null && (
         <Card title={t("thinking.title")} style={{ marginBottom: 16 }}>
-          <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Space>
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            {/* 第一组：思考 开/关 */}
+            <Space wrap>
               {/* UI 层语义：Switch on = "开思考"，off = "关思考"。直觉的"开关 = 启用"。
                   内部 state thinkingDisabled / 后端 setting key (thinking.disabled) 仍保留
                   原义（true = 关思考），UI 这里反转一次。 */}
@@ -363,10 +381,31 @@ export function CodexEnable() {
               <span>
                 {thinkingDisabled ? t("thinking.statusOff") : t("thinking.statusOn")}
               </span>
+              {/* 第二组：独立的"高强度兜底"开关。disableThinking 时禁用（关思考路径接管）。 */}
+              <span style={{ marginLeft: 16, opacity: thinkingDisabled ? 0.4 : 1 }}>·</span>
+              <Switch
+                checked={!!forceHighEffort}
+                loading={forceHighEffortSaving}
+                disabled={!!thinkingDisabled || thinkingCliOverridden}
+                onChange={(v) => void doToggleForceHighEffort(v)}
+                checkedChildren={t("thinking.forceHighOn")}
+                unCheckedChildren={t("thinking.forceHighOff")}
+              />
+              <span style={{ opacity: thinkingDisabled ? 0.4 : 1 }}>
+                {t("thinking.forceHighLabel")}
+              </span>
             </Space>
             <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
               {t("thinking.hint")}
             </Typography.Paragraph>
+            {forceHighEffort && !thinkingDisabled && (
+              <Alert
+                type="warning"
+                showIcon
+                message={t("thinking.forceHighSideEffect")}
+                style={{ marginTop: 4 }}
+              />
+            )}
             {thinkingCliOverridden && (
               <Alert
                 type="warning"

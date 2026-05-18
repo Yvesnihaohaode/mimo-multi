@@ -99,8 +99,10 @@ export interface GenericProviderSpec {
     dropResponseFormat?: boolean;
     // SenseNova 等只接受 tools[].type ∈ {function, custom}；过滤 OpenAI 内置 tool。
     dropNonFunctionTools?: boolean;
+    // Kimi 不识别 reasoning_effort，靠 thinking:{enabled/disabled} 控制思考；strip 该字段。
+    dropReasoningEffort?: boolean;
     // 选填预设 id，让 generic provider 复用 builtin 的"友好错误翻译"能力。
-    enhanceErrorPreset?: "sensenova" | "minimax";
+    enhanceErrorPreset?: "sensenova" | "minimax" | "kimi";
   };
   docsUrl?: string;
   // minimax-compat: 顶层开关。models: [] 时让 resolveModel 返回 null，
@@ -122,7 +124,7 @@ export interface GenericProvidersResponse {
 // admin UI 用 matchBaseUrl / matchModelPrefix 判断用户在编辑 generic provider 时
 // 是否命中已知厂商，命中则自动套用 recommendedSpec.features。
 export interface ProviderPresetClient {
-  id: "minimax" | "sensenova";
+  id: "minimax" | "sensenova" | "kimi";
   displayName: string;
   matchBaseUrl: string[];
   matchModelPrefix: string[];
@@ -343,12 +345,16 @@ export const api = {
   providerPresets: () =>
     request<ProviderPresetsResponse>("GET", "/provider-presets"),
   thinkingState: () =>
-    request<{ effective: boolean; cliOverride: boolean | null; setting: boolean }>(
-      "GET",
-      "/thinking-state"
-    ),
+    request<{
+      effective: boolean;
+      cliOverride: boolean | null;
+      setting: boolean;
+      forceHighEffort: boolean;
+    }>("GET", "/thinking-state"),
   setThinkingDisabled: (disabled: boolean) =>
-    request<{ ok: boolean; disabled: boolean }>("PUT", "/thinking-state", { disabled }),
+    request<{ ok: boolean }>("PUT", "/thinking-state", { disabled }),
+  setForceHighEffort: (forceHighEffort: boolean) =>
+    request<{ ok: boolean }>("PUT", "/thinking-state", { forceHighEffort }),
   codexState: () => request<CodexState>("GET", "/codex-state"),
   codexTargets: () => request<CodexTargetsResponse>("GET", "/codex-targets"),
   codexApply: (body: { providerId: string; modelId: string }) =>

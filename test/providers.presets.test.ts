@@ -6,9 +6,17 @@ import {
 } from "../src/providers/presets.js";
 
 describe("PROVIDER_PRESETS", () => {
-  it("contains sensenova and minimax", () => {
+  it("contains sensenova, minimax, kimi", () => {
     const ids = PROVIDER_PRESETS.map((p) => p.id).sort();
-    expect(ids).toEqual(["minimax", "sensenova"]);
+    expect(ids).toEqual(["kimi", "minimax", "sensenova"]);
+  });
+
+  it("kimi preset has dropReasoningEffort + moonshot baseUrl", () => {
+    const k = PROVIDER_PRESETS.find((p) => p.id === "kimi");
+    expect(k).toBeDefined();
+    expect(k!.recommendedSpec.features.dropReasoningEffort).toBe(true);
+    expect(k!.recommendedSpec.baseUrl).toContain("moonshot.cn");
+    expect(k!.matchBaseUrl.some((s) => s.includes("moonshot"))).toBe(true);
   });
 
   it("sensenova preset has dropResponseFormat + enhanceErrorPreset wired", () => {
@@ -23,6 +31,16 @@ describe("PROVIDER_PRESETS", () => {
 describe("matchPreset", () => {
   it("matches sensenova by baseUrl substring (case-insensitive)", () => {
     expect(matchPreset("https://TOKEN.SenseNova.cn/v1", "")?.id).toBe("sensenova");
+  });
+
+  it("matches kimi by baseUrl (moonshot.cn / moonshot.ai)", () => {
+    expect(matchPreset("https://api.moonshot.cn/v1", "")?.id).toBe("kimi");
+    expect(matchPreset("https://api.moonshot.ai/v1", "")?.id).toBe("kimi");
+  });
+
+  it("matches kimi by model prefix (kimi- / moonshot-v1-)", () => {
+    expect(matchPreset("", "kimi-k2.6")?.id).toBe("kimi");
+    expect(matchPreset("", "moonshot-v1-128k")?.id).toBe("kimi");
   });
 
   it("matches sensenova by model prefix when baseUrl is empty", () => {
