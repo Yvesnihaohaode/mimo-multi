@@ -733,6 +733,49 @@ export function reqToChat(req: ResponsesRequest, opts: ReqToChatOpts = {}): Chat
     chat.reasoning_effort = "high";
   }
 
+  // Mixed-mode history defense.
+  //
+  // Scenario: the user kept thinking OFF earlier in a conversation, then
+  // toggled it ON via the admin UI and continued the same session. Now
+  // `messages` contains historical assistant turns that have NO
+  // reasoning_content (they were produced under thinking-off). MiMo / DeepSeek
+  // in thinking mode scan the ENTIRE history and 400 with
+  //   "The reasoning_content in the thinking mode must be passed back to the API."
+  // even though the offending turns predate the current thinking-on request.
+  //
+  // Same symptom happens if the client (e.g. some Codex Desktop builds) just
+  // doesn't echo reasoning items back across turns — every assistant message
+  // will lack reasoning_content for the same reason.
+  //
+  // Fix: backfill a short placeholder `reasoning_content` onto each offending
+  // historical assistant message. The placeholder satisfies upstream's
+  // non-empty check while being honest that those turns ran without real
+  // thinking. THIS request's thinking stays ON, so the user keeps the
+  // benefit of the toggle they set in the admin UI.
+  //
+  // Alternative considered: silently force `thinking:{type:"disabled"}` for
+  // this request. That works but defeats the user's intent. Placeholder
+  // injection is the less surprising default — if the upstream ever rejects
+  // the placeholder we'd see an obvious 400 in logs and can switch strategies.
+  if (opts.disableThinking !== true) {
+    let injected = 0;
+    for (const m of chat.messages) {
+      if (m.role === "assistant" && !m.reasoning_content) {
+        m.reasoning_content = MIXED_MODE_REASONING_PLACEHOLDER;
+        injected += 1;
+      }
+    }
+    if (injected > 0) {
+      log.info(
+        `backfilled placeholder reasoning_content onto ${injected} historical assistant message(s) so thinking can stay ON for this request. ` +
+          "These turns originally ran with thinking OFF (or the client didn't echo reasoning items). " +
+          'Placeholder text: "' +
+          MIXED_MODE_REASONING_PLACEHOLDER +
+          '". If the upstream rejects this with a 400, please open an issue — we can fall back to silently disabling thinking.'
+      );
+    }
+  }
+
   // 全局"关思考"信号：只设 thinking:{type:"disabled"}（OpenAI 标准做法，mimo / deepseek
   // 直接认）。reasoning_effort:"none" 是 SenseNova 6.7 的专属扩展，mimo / deepseek 上游
   // 会因为"未知枚举值"400（mimo 报 Input should be 'low','medium' or 'high'）。所以由各
@@ -744,3 +787,10 @@ export function reqToChat(req: ResponsesRequest, opts: ReqToChatOpts = {}): Chat
 
   return chat;
 }
+
+// Marker injected into historical assistant turns that lack reasoning_content
+// when the current request is in thinking mode — keeps MiMo / DeepSeek from
+// 400ing while signaling clearly to humans (and to the model) that the turn
+// did not actually involve thinking. Short on purpose so it doesn't bias the
+// model's continuation.
+export const MIXED_MODE_REASONING_PLACEHOLDER = "(this turn ran without thinking mode)";

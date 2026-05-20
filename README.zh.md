@@ -7,7 +7,9 @@
   <a href="./doc/auth-deployment.zh.md">鉴权与部署</a> ·
   <a href="./doc/mimoskill.zh.md">mimoskill</a> ·
   <a href="./doc/generic-providers.zh.md">通用 Provider</a> ·
-  <a href="./doc/codex-enable.zh.md">Codex 启用</a>
+  <a href="./doc/codex-enable.zh.md">Codex 启用</a> ·
+  <a href="./doc/proxy-faq.zh.md">代理 FAQ</a> ·
+  <a href="./doc/tag-log.zh.md">版本日志</a>
 </p>
 
 <p align="center">
@@ -21,18 +23,11 @@
 
 让**最新版** OpenAI Codex CLI / Codex 桌面端接入主流大模型的本地代理。内置 **小米 MiMo V2.5** 与 **DeepSeek V4 Pro**，并提供**通用 provider 机制**——不改任何代码、不重新发包，就能把任何 **OpenAI Chat Completions 兼容**（Qwen / GLM / Kimi / 本地 vLLM / Ollama / LM Studio …）或**原生 Responses API**（OpenAI 自家）的上游接到新版 Codex。把 Codex 的 Responses API 实时翻译成上游的 Chat Completions API，按客户端发的 `model` 字段在 provider 之间自动路由。可配 admin Web 控制台。
 
-> 🚀 **v0.2.16 新功能**：可选开启 **Server 模式**——登录系统 + 每用户 API key + BYOK + Gitee / GitHub OAuth + Codex 客户端配置历史与一键下发 bundle。把 mimo2codex 部署到 Docker / 内网 / 小圈子时再也不用担心上游 key 被白嫖。本地单机运行完全不受影响（`authMode` 默认 `off`）。详细教程见 [doc/auth-deployment.zh.md](./doc/auth-deployment.zh.md)——Docker compose、首次启动 bootstrap、OAuth 配置、故障排查全在那里。
-
-<details>
-<summary>🆕 <b>新功能 / v0.2.15（2026-05-18）· 思考模式页面配置/支持关闭思考/深度思考 + docker 部署 + 多架构镜像</b>（点击展开）</summary>
-
-- **v0.2.15（2026-05-18）· 思考模式 admin UI 化**：「Codex 启用」页新增「思考模式」全局卡片，两个开关 ——（1）**思考 开/关**：写入 settings 持久化，再不用每次重启加 `--disable-thinking`；改完立即对新请求生效（无需重启）。关闭后所有 provider 都不思考（mimo / deepseek 发 `thinking:{type:"disabled"}`，sensenova / 其他 generic 发 `reasoning_effort:"none"`）。（2）**强制高强度思考**：Codex 没在请求里传 `reasoning.effort` 时（多数客户端对非 GPT-5 模型默认不传），mimo2codex 兜底注 `reasoning_effort:"high"`，让上游真的高强度思考。默认关，开启时显示明显的副作用警告（简单请求也会走推理、部分模型上 "high" 等同 "max" 账单可能显著上涨）。CLI `--disable-thinking` 仍优先于 admin 设置。
-- **v0.2.15（2026-05-18）· Kimi (Moonshot) preset**：admin UI 输入 `https://api.moonshot.cn/v1`（或 `moonshot.ai`）会被自动识别为 Kimi，并套上 `dropReasoningEffort: true` —— Kimi 用 `thinking:{enabled/disabled}` 控制思考，**不识别** `reasoning_effort`，开了"强制高强度思考"也不会冲突。覆盖模型：`kimi-k2.6` / `kimi-k2.5` / `kimi-k2-thinking` / `kimi-k2-thinking-turbo` / `moonshot-v1-{8k,32k,128k}`。详见 [doc/kimi.zh.md](./doc/kimi.zh.md)。
-- **v0.2.15（2026-05-18）· docker 部署**：新增 `Dockerfile`（多阶段 alpine 构建，~70MB）+ `.dockerignore` + GitHub Actions workflow（**自动构建 `linux/amd64 / linux/arm64` 双架构镜像，推送到 ghcr.io/7as0nch/mimo2codex**，不是 DockerHub）；附带 `docker-compose.yml` 一键起，**数据目录挂在本地 `./.mimo2codex/`**（sqlite + providers.json + admin UI 配置都跨容器重建持久化）；env 支持 `.env` 文件挂载或 `-e` / `environment:` 直传 key，**mac / Windows / Linux 全平台**通吃。基于 [#15](https://github.com/7as0nch/mimo2codex/pull/15)（感谢 @hufang360）。
-- **v0.2.7（2026-05-15）· webui 大改 + 工具链优化**：整套 admin webui 用 **Ant Design 5** 重写（深浅主题、中英双语、视口锁定 sider + footer 固定布局、Token 趋势改平滑曲线）；新增 `.env.example` + **Bash / PowerShell 一行命令注入 key** 脚本（`.env` 已 gitignore）；「Codex 启用」每行加 **⚡探测** 按钮，点一下发最小 ping 验证 key/baseUrl/模型 id 是否通；Token 趋势图融合**缓存命中柱**（绿柱 = 命中、灰柱 = 提示总量）+ 窗口聚合命中率；支持**修改 Codex 目录**（settings 或 `CODEX_HOME` 环境变量）。
-- **v0.2.6（2026-05-14）· 「Codex 启用」**：admin webui 一键写入 `~/.codex/auth.json` + `config.toml`，**替代 cc-switch**；同时提供"运行时覆盖"（无需重启 Codex 即可换上游 model）。原文件自动备份，**首次覆盖外部 auth.json 时的备份永久保留**——切换 100 次模型也找得回你原来的真 Codex 配置。详见 [doc/codex-enable.zh.md](./doc/codex-enable.zh.md)。
-
-</details>
+> 🚀 **v0.3.0（正式版）**：**Docker 鉴权部署正式发布** —— 用户注册 / 登录、每用户独立 m2c 代理 API key、BYOK、Gitee / GitHub OAuth、Codex 客户端配置 bundle 下发。把 mimo2codex 部署到 Docker / 内网 / 小圈子时不泄漏上游 key。本地单机运行不受影响（`authMode` 默认 `off`）。详细教程见 [doc/auth-deployment.zh.md](./doc/auth-deployment.zh.md)。
+>
+> ℹ️ v0.2.17（2026-05-19）已作为**预览版本**先行发布同一特性 —— 生产环境请等 v0.3.0+。
+>
+> 📜 完整版本历史 → **[doc/tag-log.zh.md](./doc/tag-log.zh.md)**（倒序排列；修复 / 新增 / 优化 / 文档 各类分门别类）。
 
 ![Admin 控制台 · 概览](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/admin-dashboard.png)
 

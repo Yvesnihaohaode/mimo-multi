@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
-import { reqToChat } from "../src/translate/reqToChat.js";
+import { reqToChat, MIXED_MODE_REASONING_PLACEHOLDER } from "../src/translate/reqToChat.js";
 import type { ResponsesRequest } from "../src/translate/types.js";
 
 describe("reqToChat", () => {
@@ -185,6 +185,9 @@ describe("reqToChat", () => {
   });
 
   it("function_call from history with output (round trip after tool exec)", () => {
+    // Fixture predates the mixed-mode history defense: the historical
+    // assistant tool-call turn has no reasoning_content. With the defense,
+    // a placeholder is backfilled so MiMo / DeepSeek thinking mode doesn't 400.
     const req: ResponsesRequest = {
       model: "mimo-v2.5-pro",
       input: [
@@ -212,6 +215,7 @@ describe("reqToChat", () => {
             function: { name: "shell", arguments: '{"cmd":"ls"}' },
           },
         ],
+        reasoning_content: MIXED_MODE_REASONING_PLACEHOLDER,
       },
       { role: "tool", tool_call_id: "call_abc", content: "a.txt\nb.txt" },
       { role: "user", content: "thanks, count them" },
@@ -814,6 +818,124 @@ describe("reqToChat", () => {
     const req: ResponsesRequest = { model: "mimo-v2.5-pro", input: "hi" };
     const chat = reqToChat(req);
     expect((chat as Record<string, unknown>).thinking).toBeUndefined();
+  });
+
+  // Mixed-mode history defense: when thinking was OFF earlier in a session
+  // then the user toggled it ON, the historical assistant turns lack
+  // reasoning_content. MiMo / DeepSeek thinking mode scan the entire history
+  // and 400. Defense: backfill a short placeholder reasoning_content onto the
+  // offenders so thinking STAYS ON for this request (preserving the user's
+  // intent), while still satisfying the upstream's non-empty check.
+  describe("mixed-mode history defense", () => {
+    it("history with assistant lacking reasoning_content + thinking-on → backfills placeholder, KEEPS thinking on", () => {
+      const req: ResponsesRequest = {
+        model: "mimo-v2.5-pro",
+        input: [
+          { type: "message", role: "user", content: [{ type: "input_text", text: "first turn" }] },
+          // Assistant turn produced under thinking-off → no reasoning_content
+          { type: "message", role: "assistant", content: [{ type: "output_text", text: "first answer" }] },
+          { type: "message", role: "user", content: [{ type: "input_text", text: "follow-up after toggling thinking on" }] },
+        ],
+      };
+      // disableThinking left default (false) — user toggled thinking ON in admin UI
+      const chat = reqToChat(req);
+
+      // Thinking stays ON for this request (no thinking:{disabled})
+      expect((chat as Record<string, unknown>).thinking).toBeUndefined();
+
+      // The offending historical assistant gets the placeholder injected
+      const assistantMsg = chat.messages.find((m) => m.role === "assistant");
+      expect(assistantMsg?.reasoning_content).toBe(MIXED_MODE_REASONING_PLACEHOLDER);
+    });
+
+    it("fresh conversation (no assistant turn yet) → does NOT trigger backfill", () => {
+      const req: ResponsesRequest = {
+        model: "mimo-v2.5-pro",
+        input: [
+          { type: "message", role: "user", content: [{ type: "input_text", text: "first ever message" }] },
+        ],
+      };
+      const chat = reqToChat(req);
+      expect((chat as Record<string, unknown>).thinking).toBeUndefined();
+      // No assistant message → nothing to inspect or modify.
+      expect(chat.messages.find((m) => m.role === "assistant")).toBeUndefined();
+    });
+
+    it("history with assistant carrying reasoning_content (proper thinking-on round-trip) → preserves the real reasoning, NO placeholder", () => {
+      const req: ResponsesRequest = {
+        model: "mimo-v2.5-pro",
+        input: [
+          { type: "message", role: "user", content: [{ type: "input_text", text: "q1" }] },
+          // Client echoed the reasoning item back → reqToChat folds it onto the assistant message
+          {
+            type: "reasoning",
+            id: "r1",
+            summary: [{ type: "summary_text", text: "thought" }],
+            encrypted_content: "full thinking trace",
+            status: "completed",
+          } as unknown as Parameters<typeof reqToChat>[0]["input"] extends Array<infer U> ? U : never,
+          { type: "message", role: "assistant", content: [{ type: "output_text", text: "a1" }] },
+          { type: "message", role: "user", content: [{ type: "input_text", text: "q2" }] },
+        ],
+      };
+      const chat = reqToChat(req);
+      const assistantMsg = chat.messages.find((m) => m.role === "assistant");
+      // Real reasoning preserved, NOT overwritten by placeholder.
+      expect(assistantMsg?.reasoning_content).toBe("full thinking trace");
+      expect(assistantMsg?.reasoning_content).not.toBe(MIXED_MODE_REASONING_PLACEHOLDER);
+      expect((chat as Record<string, unknown>).thinking).toBeUndefined();
+    });
+
+    it("mixed-mode + forceHighEffort → backfills placeholder, KEEPS reasoning_effort='high' (thinking is on, so high effort is consistent)", () => {
+      const req: ResponsesRequest = {
+        model: "mimo-v2.5-pro",
+        input: [
+          { type: "message", role: "user", content: [{ type: "input_text", text: "first" }] },
+          { type: "message", role: "assistant", content: [{ type: "output_text", text: "ans" }] },
+          { type: "message", role: "user", content: [{ type: "input_text", text: "follow-up" }] },
+        ],
+      };
+      const chat = reqToChat(req, { forceHighEffort: true });
+      expect((chat as Record<string, unknown>).thinking).toBeUndefined();
+      expect(chat.reasoning_effort).toBe("high");
+      const assistantMsg = chat.messages.find((m) => m.role === "assistant");
+      expect(assistantMsg?.reasoning_content).toBe(MIXED_MODE_REASONING_PLACEHOLDER);
+    });
+
+    it("explicit disableThinking=true → no placeholder backfill (user opted out of thinking entirely)", () => {
+      const req: ResponsesRequest = {
+        model: "mimo-v2.5-pro",
+        input: [
+          { type: "message", role: "user", content: [{ type: "input_text", text: "q" }] },
+          { type: "message", role: "assistant", content: [{ type: "output_text", text: "a" }] },
+          { type: "message", role: "user", content: [{ type: "input_text", text: "q2" }] },
+        ],
+      };
+      const chat = reqToChat(req, { disableThinking: true });
+      expect((chat as Record<string, unknown>).thinking).toEqual({ type: "disabled" });
+      // No placeholder needed when thinking is off — upstream won't enforce the check.
+      const assistantMsg = chat.messages.find((m) => m.role === "assistant");
+      expect(assistantMsg?.reasoning_content).toBeUndefined();
+    });
+
+    it("multiple offending historical assistants → all get the placeholder", () => {
+      const req: ResponsesRequest = {
+        model: "mimo-v2.5-pro",
+        input: [
+          { type: "message", role: "user", content: [{ type: "input_text", text: "q1" }] },
+          { type: "message", role: "assistant", content: [{ type: "output_text", text: "a1" }] },
+          { type: "message", role: "user", content: [{ type: "input_text", text: "q2" }] },
+          { type: "message", role: "assistant", content: [{ type: "output_text", text: "a2" }] },
+          { type: "message", role: "user", content: [{ type: "input_text", text: "q3 with thinking on" }] },
+        ],
+      };
+      const chat = reqToChat(req);
+      const assistants = chat.messages.filter((m) => m.role === "assistant");
+      expect(assistants).toHaveLength(2);
+      for (const a of assistants) {
+        expect(a.reasoning_content).toBe(MIXED_MODE_REASONING_PLACEHOLDER);
+      }
+    });
   });
 
   it("--force-parallel-tool-calls overrides Codex's parallel_tool_calls=false", () => {

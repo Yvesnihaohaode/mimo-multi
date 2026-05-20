@@ -1,0 +1,151 @@
+# 版本日志（Tag Log）
+
+<p>
+  <a href="./tag-log.md">English</a> ·
+  <a href="./tag-log.zh.md"><strong>简体中文</strong></a>
+</p>
+
+mimo2codex 的版本发布历史，按 tag 倒序排列。
+
+**类别标签说明**
+
+- **[new]** / **[feat]**：新增功能
+- **[fix]**：bug 修复
+- **[opt]** / **[refactor]**：优化 / 重构
+- **[doc]**：文档相关
+- **[test]**：测试用例
+
+---
+
+## （v0.3.0）
+
+- **[new]** **Docker 鉴权部署正式发布（GA）**：v0.2.17 作为预览验证后，**Docker 鉴权模式**作为稳定特性发布 —— 用户注册 / 登录系统、每用户独立的 m2c 代理 API key、BYOK（自带上游 key）、Gitee / GitHub OAuth、Codex 客户端配置 bundle 下载。把 mimo2codex 部署到 Docker / 内网 / 小圈子时不再泄漏上游 key。本地单机运行（`authMode` 默认 `off`）完全不受影响。完整教程：[doc/auth-deployment.zh.md](./auth-deployment.zh.md) —— 含 Docker compose、首次启动 bootstrap、OAuth 配置、故障排查。
+- **[new]** **思考模式混合历史防御**：检测到会话历史里有 assistant 消息缺 `reasoning_content`（典型场景：用户在同会话切换"默认开启思考"开关），自动给这些历史消息回填占位符 `"(this turn ran without thinking mode)"`，**思考保留为开**，避免上游 MiMo / DeepSeek 400 `"reasoning_content must be passed back"`。配套 INFO 日志。
+- **[opt]** 控制台日志降噪：`WARN client model rewritten on the way upstream` → `INFO model fallback applied — client sent unknown model id, request continues with provider default`。降级到 INFO + 改文案，不再让人误以为是错误（实际是 graceful fallback，请求正常完成）。
+- **[doc]** 新增双语 [代理 / 网络 FAQ](./proxy-faq.zh.md)：mac & win 各自代理设置、502 / ECONNREFUSED / DNS / TLS-MITM 等错误码自查表、`gpt-5.4` placeholder 来源解释、思考模式混合历史现象说明。
+- **[doc]** 新增双语 [版本日志](./tag-log.zh.md)：把 README 顶部 `<details>` changelog 块迁出，按 tag 倒序、`[new]/[fix]/[opt]/[doc]` 分类，含全部 44 个历史 tag。
+
+---
+
+## v0.2.17 — 2026-05-19
+
+- **[new]** **Docker 鉴权模式预览版**：用户可注册登录，生成 mimo2codex 专属代理 API 的 key（m2c key）。在 Docker / 内网 / 小圈子部署时，把 `OPENAI_API_KEY` 字段的 `mimo2codex-local` 替换成生成的 m2c key，避免上游 key 被滥用。本地单机运行（`authMode` 默认 `off`）不受影响。
+
+> ⚠️ **v0.2.17 是预览版本**，作为 Docker 鉴权部署的首发试用。**v0.3.0 是正式 GA 版本**，请生产环境使用 v0.3.0+。详见 [鉴权与部署](./auth-deployment.zh.md)。
+
+## v0.2.16 — 2026-05-19
+
+- **[opt]** Admin UI 紧凑化：内容更紧凑、删掉无用展示，减少视觉噪声。
+
+## v0.2.15 — 2026-05-18
+
+> 含 beta 系列 `v0.2.15-beta.0/1/2`（SenseNova 模型适配 + 思考微调 + Kimi 适配）。
+
+- **[new]** **思考模式 admin UI 化**：「Codex 启用」页新增「思考模式」全局卡片。
+  - **思考 开/关**：写入 settings 持久化，不用每次重启加 `--disable-thinking`；改完立即对新请求生效（无需重启）。关闭后所有 provider 都不思考（mimo / deepseek 发 `thinking:{type:"disabled"}`，sensenova / 其他 generic 发 `reasoning_effort:"none"`）。
+  - **强制高强度思考**：Codex 没在请求里传 `reasoning.effort` 时，兜底注 `reasoning_effort:"high"`。默认关，开启时显示明显副作用警告（账单可能上涨）。CLI `--disable-thinking` 仍优先。
+- **[new]** **Kimi (Moonshot) preset**：admin UI 输入 `https://api.moonshot.cn/v1`（或 `moonshot.ai`）自动识别为 Kimi，套上 `dropReasoningEffort: true`，避免 Kimi 不识别 `reasoning_effort` 时 400。覆盖 `kimi-k2.6` / `kimi-k2.5` / `kimi-k2-thinking` / `kimi-k2-thinking-turbo` / `moonshot-v1-{8k,32k,128k}`。详见 [doc/kimi.zh.md](./kimi.zh.md)。
+- **[new]** **Docker 部署**：新增 `Dockerfile`（多阶段 alpine 构建，~70MB）+ `.dockerignore` + GitHub Actions workflow（**自动构建 `linux/amd64 / linux/arm64` 双架构镜像，推送到 ghcr.io/7as0nch/mimo2codex**）；`docker-compose.yml` 一键起，数据目录挂在本地 `./.mimo2codex/`（sqlite + providers.json + admin UI 配置跨容器重建持久化）；env 支持 `.env` 文件挂载或 `-e` / `environment:` 直传 key。mac / Windows / Linux 全平台通吃。基于 [#15](https://github.com/7as0nch/mimo2codex/pull/15)（感谢 @hufang360）。
+- **[new]** **SenseNova (商汤) 模型适配**（来自 beta.0/1）。
+
+## v0.2.14 — 2026-05-15
+
+- **[fix]** `.env` 配置 example 文件新增注释，避免初次配置时漏看字段含义。
+
+## v0.2.13 / v0.2.12 / v0.2.11 / v0.2.10 — 2026-05-15
+
+- **[new]** 版本更新检查（check 上游 npm registry 是否有新版）。多次迭代修补（连发 4 个 patch）以打磨网络容错、缓存策略与提示文案。
+
+## v0.2.9 — 2026-05-15
+
+- **[new]** 新增 `.env` 通用配置方案：`mimo2codex init` 后填入 key 即可，跨平台一份配置。
+
+## v0.2.8 — 2026-05-15
+
+> MiniMax / 严格 OpenAI 兼容上游接入修补合集（PR #12）。
+
+- **[fix]** `reqToChat`：不再发 `strict: null` 到上游（MiMo Pydantic schema 拒绝 null，会 400 `"Input should be a valid boolean"`）。修 [issue #11](https://github.com/7as0nch/mimo2codex/issues/11)。
+- **[fix]** `minimax-compat`：一键预设不再默认删 `stream_options` / `parallel_tool_calls`。
+- **[feat]** `minimax-compat`：响应侧 inline `<think>...</think>` 切到 `reasoning_content`。
+- **[feat]** webui providers 表单加「严格 OpenAI 兼容」开关组（minimaxCompat 等）。
+- **[feat]** generic provider 接 MiniMax 兼容补丁（[issue #7](https://github.com/7as0nch/mimo2codex/issues/7)）。
+
+## v0.2.7 — 2026-05-15
+
+- **[new]** 全新 webui（**Ant Design 5** 重写）：深浅主题、中英双语 i18n、视口锁定 sider + footer 固定布局、Token 趋势平滑曲线。
+- **[new]** 新增 `.env.example` + **Bash / PowerShell 一行命令注入 key** 脚本（`.env` 已 gitignore）。
+- **[new]** 「Codex 启用」每行加 **⚡探测** 按钮：发最小 ping 验证 key / baseUrl / 模型 id 是否通。
+- **[new]** Token 趋势图融合**缓存命中柱**（绿柱 = 命中、灰柱 = 提示总量）+ 窗口聚合命中率。
+- **[new]** 支持**修改 Codex 目录**：settings 配置或 `CODEX_HOME` 环境变量。
+
+> 含 beta 系列 `v0.2.6-beta.1/2/3`：MiMo 全部模型 `contextWindow` 128K → 1M（对齐 DeepSeek，解 Codex 256K 配置 400）；webui 重构 PR #1~#6（antd 5 引入、Setup/Models/CodexEnable 主题化、Logs 表格化、Dashboard 缓存命中、视口高度锁定等）。
+
+## v0.2.6 — 2026-05-14
+
+- **[new]** **「Codex 启用」页面**（**替代 cc-switch**）：admin webui 一键写入 `~/.codex/auth.json` + `config.toml`。
+- **[new]** **运行时覆盖**：无需重启 Codex 即可换上游 model。
+- **[new]** Codex 备份永久保留 + 半残 pair 恢复 + 手动删除：原文件自动备份，**首次覆盖外部 auth.json 时的备份永久保留**——切换 100 次模型也找得回原始配置。
+- **[fix]** `removeOrphanToolMessages`：DeepSeek V4 session 中断时丢弃孤儿 tool 消息，避免 400 `"Messages with role 'tool' must be a response to..."`（修 [PR #10](https://github.com/7as0nch/mimo2codex/pull/10) / [issue #8](https://github.com/7as0nch/mimo2codex/issues/8)）。
+- 详见 [doc/codex-enable.zh.md](./codex-enable.zh.md)。
+
+## v0.2.5 — 2026-05-14
+
+> 含 beta `v0.2.5-beta.1`。
+
+- **[feat]** MiMo / DeepSeek 文档对齐。
+- **[fix]** DeepSeek `tool_calls` 400 修复。
+- **[feat]** Friendly context overflow 错误提示：上游 context 超限时给可读的 `/compact` 引导，而不是裸 400。
+- **[feat]** Beta 发版流程（`npm run release:beta`）。
+
+## v0.2.4 — 2026-05-13
+
+- **[test]** 补 `selectProvider` 两段优先级回归测试。
+- **[doc]** 同步通用 provider 路由优先级文档。
+
+## v0.2.3 — 2026-05-13
+
+- **[fix]** 根据[小米官方公告](https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content)修复 MiMo `reasoning_content` 回传问题。
+
+## v0.2.2 — 2026-05-13
+
+- **[fix]** 工作流（GitHub Actions）修补。
+
+## v0.2.1 — 2026-05-12
+
+- **[new]** 添加 `mimoskill` 支持：图像生成、OCR 等能力（用 Python stdlib，无 pip 依赖）。
+
+## v0.1.16 ~ v0.1.19 — 2026-05-12
+
+- **[new]** `mimoskill` 早期迭代（v0.1.17 ~ v0.1.19）：图像生成、OCR、宠物生成功能逐步打磨。
+- **[new]** v0.1.16：新增其他模型支持，默认 mimo / deepseek，同时支持 Responses API 原生对接（`wireApi="responses"`）。
+
+## v0.1.15 — 2026-05-12
+
+- **[fix]** 注册 `mimo-v2.5` 视觉模型为内置目录，避免静默降级到 `mimo-v2.5-pro`（导致用户传图时被丢弃）。
+
+## v0.1.1 ~ v0.1.14 — 2026-05-09 ~ 2026-05-10
+
+项目早期迭代版本（v0.1.1 = 2026-05-09 首次公开发布）。这一阶段没有详细 changelog，主要工作：
+
+- 搭建 mimo / deepseek 双 provider 基础。
+- Responses API ↔ Chat Completions 双向翻译核心（`reqToChat` / `respToResponses` / `streamToSse`）。
+- 第一版 webui（Token / Logs / Settings 基础页）。
+- SQLite 持久化（聊天日志、模型目录、runtime settings）。
+- CLI 工具：`mimo2codex init` / `update` / `print-config` / `print-cc-switch`。
+
+完整 commit 流水可通过 `git log v0.1.1..v0.1.14 --oneline` 查看。
+
+---
+
+## 发版流程
+
+发版命令在 [package.json](../package.json) 里：
+
+```bash
+npm run release:patch    # x.y.Z+1
+npm run release:minor    # x.Y+1.0
+npm run release:major    # X+1.0.0
+npm run release:beta     # 预发布
+```
+
+完整 runbook 见 [PUBLISHING.md](../PUBLISHING.md)（仓库根目录）。

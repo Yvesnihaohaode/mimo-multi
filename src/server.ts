@@ -422,7 +422,11 @@ async function handleResponses(
     apiKeySource,
   });
   if (rewriteNotice) {
-    log.warn("client model rewritten on the way upstream", {
+    // INFO, not WARN — this is a graceful fallback, not an error. The request
+    // continues normally with the provider's default model. Kept visible (not
+    // debug) because silent rewrites can mask capability mismatches (e.g. a
+    // vision request silently routed to a non-vision default model).
+    log.info("model fallback applied — client sent unknown model id, request continues with provider default", {
       provider: provider.id,
       from: rewriteNotice.from,
       to: rewriteNotice.to,
@@ -1018,7 +1022,8 @@ async function handleChatPassthrough(
     apiKeySource,
   });
   if (rewriteNotice) {
-    log.warn("client model rewritten on the way upstream", {
+    // INFO, not WARN — see handleResponses for the rationale.
+    log.info("model fallback applied — client sent unknown model id, request continues with provider default", {
       provider: provider.id,
       from: rewriteNotice.from,
       to: rewriteNotice.to,

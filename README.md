@@ -7,7 +7,9 @@
   <a href="./doc/auth-deployment.md">Auth &amp; Deployment</a> ·
   <a href="./doc/mimoskill.md">mimoskill</a> ·
   <a href="./doc/generic-providers.md">Generic Providers</a> ·
-  <a href="./doc/codex-enable.md">Codex Enable</a>
+  <a href="./doc/codex-enable.md">Codex Enable</a> ·
+  <a href="./doc/proxy-faq.md">Proxy FAQ</a> ·
+  <a href="./doc/tag-log.md">Tag Log</a>
 </p>
 
 <p align="center">
@@ -21,18 +23,11 @@
 
 Local proxy that lets the **latest OpenAI Codex CLI / desktop** talk to virtually any modern LLM. Built-in support for **Xiaomi MiMo V2.5** and **DeepSeek V4 Pro**, plus a **generic provider mechanism** that connects any **OpenAI Chat Completions-compatible** (Qwen / GLM / Kimi / vLLM / Ollama / LM Studio …) or **native Responses API** (OpenAI itself) upstream — no code changes, no re-publish needed. Translates Codex's Responses API ↔ upstream Chat Completions on the fly, per-request routing by `model` field, optional admin web console, runs on `127.0.0.1`.
 
-> 🚀 **New in v0.2.16**: opt-in **Server mode** ships login + per-user API keys + BYOK + OAuth (Gitee / GitHub) + downloadable Codex config bundles, so you can put mimo2codex behind Docker / an internal network / a small private circle without exposing your upstream key. Local single-user runs are unaffected (`authMode` defaults to `off`). See [doc/auth-deployment.md](./doc/auth-deployment.md) for the full walkthrough — Docker compose, first-run bootstrap, OAuth setup, troubleshooting.
-
-<details>
-<summary>🆕 <b>What's new / v0.2.15 (2026-05-18) · Thinking mode UI / toggle / deep-thinking + Docker deployment + multi-arch images</b> (click to expand)</summary>
-
-- **v0.2.15 (2026-05-18) · Thinking mode in admin UI**: the "Codex Enable" page adds a global **Thinking** card with two switches — (1) **Thinking ON/OFF** persists into the settings DB so you no longer need to relaunch with `--disable-thinking`; takes effect immediately on the next request (no restart). OFF makes every provider skip thinking (`thinking:{type:"disabled"}` for mimo / deepseek, `reasoning_effort:"none"` for sensenova / generic). (2) **Force high reasoning effort** — when Codex didn't pass a `reasoning.effort` in the request (most clients don't, except GPT-5 models), mimo2codex fills in `reasoning_effort:"high"` so the upstream actually thinks at high intensity. Disabled by default with a clear side-effect warning (trivial requests will also reason; on some upstreams "high"≈"max" so billing can spike). CLI `--disable-thinking` still wins over the admin setting.
-- **v0.2.15 (2026-05-18) · Kimi (Moonshot) preset**: typing `https://api.moonshot.cn/v1` (or `moonshot.ai`) as baseUrl is auto-recognized in the admin UI and applies `dropReasoningEffort: true` so Kimi (which uses `thinking:{enabled/disabled}` instead of `reasoning_effort`) doesn't see the unknown field when "Force high reasoning effort" is on. Models: `kimi-k2.6` / `kimi-k2.5` / `kimi-k2-thinking` / `kimi-k2-thinking-turbo` / `moonshot-v1-{8k,32k,128k}`. See [doc/kimi.md](./doc/kimi.md).
-- **v0.2.15 (2026-05-18) · Docker deployment**: new `Dockerfile` (multi-stage alpine build, ~70MB final image) + `.dockerignore` + GitHub Actions workflow that auto-builds **multi-arch `linux/amd64 / linux/arm64` images and pushes to ghcr.io/7as0nch/mimo2codex** (not DockerHub); bundled `docker-compose.yml` for one-command launch with **the data dir bind-mounted to local `./.mimo2codex/`** (sqlite + providers.json + admin UI config persist across container rebuilds); env supports both `.env` file mount and `-e` / `environment:` direct injection, works on **macOS / Windows / Linux**. Based on [#15](https://github.com/7as0nch/mimo2codex/pull/15) (thanks @hufang360).
-- **v0.2.7 (2026-05-15) · webui overhaul + toolchain polish**: full admin webui rewrite on **Ant Design 5** (dark/light themes, EN/中文 i18n, viewport-locked layout with fixed sider + footer, smoothed Token-usage curves); new `.env.example` + **Bash / PowerShell one-liner scripts** that inject keys into the shell (`.env` is gitignored); per-model **⚡Probe** button on the "Enable Codex" page that fires a minimal ping to validate key / baseUrl / model id end-to-end; Token-usage chart now folds in a **cache-hit overlay** (green bars = cache hits, gray ghosts = prompt totals) plus a window-wide hit-rate summary; **customizable Codex dir** via settings or the `CODEX_HOME` env var.
-- **v0.2.6 (2026-05-14) · "Codex Enable" page**: one-click write of `~/.codex/auth.json` + `config.toml` from the admin webui — a **cc-switch replacement** for Codex-only users. Comes with a "runtime override" mode (swap upstream models without restarting Codex). Old files are auto-backed-up, and **the first backup that captures your real OpenAI auth.json is permanently preserved** — switch models 100 times and you can still roll back to your original Codex config. See [doc/codex-enable.md](./doc/codex-enable.md).
-
-</details>
+> 🚀 **Coming v0.3.0 (GA)**: **Docker auth deployment** goes stable — user registration / login, per-user m2c API keys, BYOK, Gitee / GitHub OAuth, downloadable Codex config bundles. Put mimo2codex behind Docker / intranet / a small private circle without exposing your upstream key. Local single-user runs are unaffected (`authMode` defaults to `off`). See [doc/auth-deployment.md](./doc/auth-deployment.md).
+>
+> ℹ️ v0.2.17 (2026-05-19) shipped the same feature as a **preview** — please use v0.3.0+ in production.
+>
+> 📜 Full version history → **[doc/tag-log.md](./doc/tag-log.md)** (newest first; fix / feat / opt categorized).
 
 ![Admin console · dashboard](https://raw.githubusercontent.com/7as0nch/mimo2codex/main/images/admin-dashboard.png)
 
