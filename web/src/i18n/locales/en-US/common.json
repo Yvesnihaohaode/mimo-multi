@@ -25,6 +25,7 @@
   "footer": {
     "feedback": "Feedback / Issues",
     "docs": "Docs",
+    "docsTooltip": "Full docs and tutorials — start here if you're stuck",
     "license": "MIT License"
   }
 }

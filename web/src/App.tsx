@@ -26,6 +26,8 @@ import { AppConfigProvider, useAppConfig } from "./contexts/AppConfigContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AppHeader } from "./components/AppHeader";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { RestartRequiredBanner } from "./components/RestartRequiredBanner";
+import { WhatsNewModal } from "./components/WhatsNewModal";
 import { Dashboard } from "./pages/Dashboard";
 import { Models } from "./pages/Models";
 import { Logs } from "./pages/logs";
@@ -204,7 +206,9 @@ function Shell() {
             minHeight: 0,
           }}
         >
+          <RestartRequiredBanner />
           <UpdateBanner />
+          <WhatsNewModal />
           <Routes>
             {MENU.map((m) => (
               <Route key={m.path} path={m.path} element={m.element} />
@@ -291,11 +295,13 @@ function AppFooter() {
           </a>
           {" · "}
           <a
-            href={`${GITHUB_REPO}/blob/main/doc/generic-providers.zh.md`}
+            href="https://mimodoc.chengj.online/"
             target="_blank"
             rel="noreferrer"
+            title={t("footer.docsTooltip")}
+            style={{ fontWeight: 500 }}
           >
-            {t("footer.docs")}
+            📖 {t("footer.docs")}
           </a>
           {" · "}
           <a

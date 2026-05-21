@@ -73,3 +73,27 @@ Tests live in `test/` and follow the naming pattern `<module-path>.test.ts` (dot
 - Never assume image generation is available natively — use `mimoskill/` helpers.
 - For image input on non-vision models, use `mimoskill/scripts/ocr.py` instead of asking users to switch models.
 - MiMo quirks: use `max_completion_tokens` (not `max_tokens`); `image_url` content requires a `text` part in the same array; reasoning is `reasoning_content` (not `reasoning_summary`); `web_search` is a builtin tool type, not a function tool.
+
+## Change workflow rules
+
+Project-level rules for every change made in this repo.
+
+### 1. Never commit on the user's behalf
+
+Do **not** run `git commit`, `git push`, `git add` with intent to commit, `git tag`, or any release script (`npm run release:patch`, `release:minor`, `release:major`, `release:beta`). The user reviews the working tree and commits / publishes manually.
+
+Read-only git inspection (`git status`, `git diff`, `git log`) and branch creation (`git checkout -b`) are fine. End-of-task summaries should describe what changed and is ready for review, not "committed as <hash>".
+
+### 2. Log every non-trivial change in BOTH places
+
+A change worth a `[new]` / `[opt]` / `[fix]` / `[doc]` tag must land in **both** files. They complement each other — never update only one or they will drift:
+
+1. **`doc/tag-log.md` + `doc/tag-log.zh.md`** — developer-facing verbose changelog. Append under the current upcoming-version block, or create a new `## vX.Y.Z — YYYY-MM-DD` section at the top. Use the existing `[new]/[opt]/[fix]/[doc]` category tags. Bilingual files stay in lockstep.
+
+2. **`web/src/release-notes.tsx`** — user-facing in-app `What's new` modal. Add a `ReleaseHighlight` to the matching `ReleaseNote`, or prepend a new entry when bumping the version. Each highlight needs:
+   - bilingual `title` and `description` (`{ en, zh }`)
+   - a `kind` (`"new" | "improved" | "fixed" | "doc"`)
+   - optional `location` (bilingual) — *where* in the UI to find the new thing, the "教学" part of the modal
+   - optional `ctaLabel` + `ctaPath` (in-app route) or `ctaHref` (external link)
+
+After the user bumps the version with `npm run release:*`, restarting the proxy makes the new `What's new` modal pop on first admin load for everyone whose `localStorage.lastSeenReleaseVersion` is below the new version.

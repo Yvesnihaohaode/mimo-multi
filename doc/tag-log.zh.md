@@ -17,6 +17,14 @@ mimo2codex 的版本发布历史，按 tag 倒序排列。
 
 ---
 
+## v0.4.2 — 2026-05-21
+
+- **[new]** **Admin UI 一键迁移数据目录**：右上 ⚙️ 设置 → 本地数据目录 → 迁移到新目录。选目标路径 → 预览将复制的文件数和大小 → 进度条流式复制 SQLite + `.env` + `providers.json`。迁移期间服务进入维护模式（503），原目录保留待用户验证后手动清理；失败自动回滚（清空目标已写入的部分 + 重新打开原目录）。完成后顶部出现常驻提示 banner 提醒用户重启生效。解析优先级变为 CLI > env > 指针文件（`~/.mimo2codex-pointer.json`）> 默认 `~/.mimo2codex/`。
+- **[doc]** **官方文档站上线 [mimodoc.chengj.online](https://mimodoc.chengj.online/)**：完整文档与教程的统一入口。admin 后台 footer 已加 📖 直达链接和悬浮提示，方便用户随时查阅。
+- **[fix]** **本地代理模式隐藏 server-only Codex 入口**：「Codex 接入」页的「导出到本地」/「从本地导入」按钮和 `History` tab 只在 Docker 鉴权部署模式（`authMode=on`）下有意义 —— 多运维之间互传渲染好的 `auth.json` + `config.toml` 配置 bundle。本地单机模式下 mimo2codex 直接把这些文件写到 `~/.codex/`，按钮属于噪音。现已按 `authMode === "on"` 条件渲染。
+
+---
+
 ## （v0.3.0）
 
 - **[new]** **Docker 鉴权部署正式发布（GA）**：v0.2.17 作为预览验证后，**Docker 鉴权模式**作为稳定特性发布 —— 用户注册 / 登录系统、每用户独立的 m2c 代理 API key、BYOK（自带上游 key）、Gitee / GitHub OAuth、Codex 客户端配置 bundle 下载。把 mimo2codex 部署到 Docker / 内网 / 小圈子时不再泄漏上游 key。本地单机运行（`authMode` 默认 `off`）完全不受影响。完整教程：[doc/auth-deployment.zh.md](./auth-deployment.zh.md) —— 含 Docker compose、首次启动 bootstrap、OAuth 配置、故障排查。

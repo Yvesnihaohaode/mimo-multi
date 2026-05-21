@@ -17,6 +17,14 @@ Release history of mimo2codex, newest first.
 
 ---
 
+## v0.4.2 — 2026-05-21
+
+- **[new]** **Migrate the data directory from the admin UI**: top-right ⚙️ Settings → Local data directory → Migrate. Pick a target path, preview file count + total size, then a live progress bar copies SQLite + `.env` + `providers.json`. The server enters maintenance mode (503) while copying; the original directory is preserved so users can verify the new location before deleting. Auto-rollback on failure (partially-written destination is wiped + the old location is reopened). A persistent banner reminds the user to restart so the new directory takes effect; the resolver priority becomes CLI > env > pointer file (`~/.mimo2codex-pointer.json`) > default `~/.mimo2codex/`.
+- **[doc]** **Official docs site goes live at [mimodoc.chengj.online](https://mimodoc.chengj.online/)**: single home for docs and tutorials. The admin footer now points at it directly with a tooltip nudge for stuck users.
+- **[fix]** **Hide server-only Codex entries in local mode**: the "Export to local" / "Import from local" buttons and the `History` tab on the Codex 接入 page only make sense in Docker auth deployments (`authMode=on`), where operators ship rendered `auth.json` + `config.toml` bundles between machines. Local single-user runs already write those files directly to `~/.codex/`, so the buttons were noise. Now gated on `authMode === "on"`.
+
+---
+
 ## (v0.3.0 — coming)
 
 - **[new]** **Docker auth deployment goes GA**: after v0.2.17 served as the preview, the **Docker auth mode** is now a stable feature — user registration / login, per-user m2c proxy API keys, BYOK (bring-your-own upstream key), Gitee / GitHub OAuth, downloadable Codex client config bundles. Put mimo2codex behind Docker / an internal network / a small private circle without leaking the upstream key. Local single-user runs (`authMode` defaults to `off`) are unaffected. Full guide: [doc/auth-deployment.md](./auth-deployment.md) — covers Docker compose, first-run bootstrap, OAuth setup, and troubleshooting.

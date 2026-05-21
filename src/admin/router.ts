@@ -44,6 +44,18 @@ import type { GenericProviderSpec } from "../providers/generic.js";
 import { PROVIDER_PRESETS } from "../providers/presets.js";
 import { isAbsolute as pathIsAbsolute } from "node:path";
 import { applyCodex, deleteBackupPair, readCodexState, restoreCodex } from "../codex/state.js";
+import { resolveDataDirInfo } from "../db/dataDir.js";
+import { pointerFilePath } from "../db/dataDirPointer.js";
+import {
+  previewMigration,
+  runMigration,
+  type MigrationEvent,
+} from "./migration.js";
+import {
+  isRestartRequired,
+  getRestartInfo,
+  isMaintenance,
+} from "../util/maintenance.js";
 import { authJsonPath, configTomlPath } from "../codex/paths.js";
 import {
   renderApplyPowerShellScript,
@@ -249,12 +261,121 @@ async function handleApi(ctx: RouteContext): Promise<void> {
     const version = cfg.userAgent.startsWith("mimo2codex/")
       ? cfg.userAgent.slice("mimo2codex/".length)
       : cfg.userAgent;
+    const restart = isRestartRequired() ? getRestartInfo() : null;
     return sendJson(res, 200, {
       ok: true,
       dataDir: cfg.dataDir,
       version,
       authMode: cfg.authMode,
+      maintenance: isMaintenance(),
+      restartRequired: !!restart,
+      restartReason: restart?.reason ?? null,
+      restartTargetDir: restart?.targetDir ?? null,
     });
+  }
+
+  // GET /admin/api/data-dir/info — current path + resolution source for the
+  // settings UI. The SPA renders different copy depending on whether the user
+  // can actually change the path (pointer/default) or not (cli/env).
+  if (req.method === "GET" && pathname === "/admin/api/data-dir/info") {
+    // Re-resolve *without* the CLI override (which we no longer have access to
+    // after boot) to learn what env/pointer/default would have produced. Then
+    // compare against cfg.dataDir — if they diverge, the operator passed
+    // --data-dir at boot, so the UI must be read-only.
+    const info = resolveDataDirInfo(undefined, process.env);
+    const current = cfg.dataDir;
+    let source: "cli" | "env" | "pointer" | "default";
+    if (info.envOverride && current === info.envOverride) {
+      source = "env";
+    } else if (info.pointerValue && current === info.pointerValue) {
+      source = "pointer";
+    } else if (current === info.defaultDir) {
+      source = "default";
+    } else {
+      source = "cli";
+    }
+    return sendJson(res, 200, {
+      current,
+      source,
+      defaultDir: info.defaultDir,
+      envOverride: info.envOverride,
+      pointerValue: info.pointerValue,
+      pointerPath: pointerFilePath(),
+      editable: source === "default" || source === "pointer",
+    });
+  }
+
+  // POST /admin/api/data-dir/preview — body { targetDir }. Returns whether
+  // the target is acceptable and how big the planned copy is.
+  if (req.method === "POST" && pathname === "/admin/api/data-dir/preview") {
+    if (isRestartRequired()) {
+      return sendError(
+        res,
+        409,
+        "restart_required",
+        "a previous migration already succeeded — restart the process before starting another"
+      );
+    }
+    type Body = { targetDir?: unknown };
+    const body = await readJsonBody<Body>(req);
+    if (typeof body.targetDir !== "string") {
+      return sendError(res, 400, "invalid_body", "targetDir is required");
+    }
+    const result = previewMigration(cfg.dataDir, body.targetDir);
+    return sendJson(res, 200, result);
+  }
+
+  // POST /admin/api/data-dir/migrate — body { targetDir }. SSE stream of
+  // progress events. Connection ends after `done` or `error`. The server
+  // stays in maintenance mode and the restartRequired flag flips to true on
+  // success; the SPA shows a persistent banner until the user restarts.
+  if (req.method === "POST" && pathname === "/admin/api/data-dir/migrate") {
+    if (isRestartRequired()) {
+      return sendError(
+        res,
+        409,
+        "restart_required",
+        "a previous migration already succeeded — restart the process before starting another"
+      );
+    }
+    if (isMaintenance()) {
+      return sendError(
+        res,
+        409,
+        "maintenance_in_progress",
+        "a migration is already in progress"
+      );
+    }
+    type Body = { targetDir?: unknown };
+    const body = await readJsonBody<Body>(req);
+    if (typeof body.targetDir !== "string" || !body.targetDir) {
+      return sendError(res, 400, "invalid_body", "targetDir is required");
+    }
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-store");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+    const write = (evt: MigrationEvent): void => {
+      res.write(`event: ${evt.type}\ndata: ${JSON.stringify(evt)}\n\n`);
+    };
+    try {
+      await runMigration(cfg.dataDir, body.targetDir, write);
+    } catch (err) {
+      // Defensive — runMigration emits its own error events; this catches
+      // anything that escapes the inner try/catches.
+      write({
+        type: "error",
+        code: "internal_error",
+        message: (err as Error).message,
+      });
+      log.error("data-dir migration crashed", {
+        error: (err as Error).message,
+      });
+    }
+    res.end();
+    return;
   }
 
   // GET /admin/api/auth/me — returns the active user or null. In authMode=off

@@ -1,0 +1,57 @@
+{
+  "title": "本地数据目录",
+  "currentLabel": "当前路径",
+  "source": {
+    "label": "解析来源",
+    "cli": "启动时指定 (--data-dir)",
+    "env": "环境变量 (MIMO2CODEX_DATA_DIR)",
+    "pointer": "Admin UI 设置",
+    "default": "默认值"
+  },
+  "lockedHint": "数据目录由启动参数或环境变量固定，UI 不可修改。请移除 --data-dir 或 MIMO2CODEX_DATA_DIR 后重启。",
+  "editableHint": "可以将数据迁移到一个新目录。所有 SQLite 数据库 + .env + providers.json 都会被复制过去，完成后请重启服务以生效。",
+  "pointerPath": "指针文件",
+  "pointerHint": "迁移完成后，新目录会持久化到 {{path}}。下次启动按 CLI > 环境变量 > 指针文件 > 默认 的顺序读取。",
+  "migrateBtn": "迁移到新目录",
+  "form": {
+    "label": "新目录路径",
+    "placeholder": "/absolute/path/to/new/dir",
+    "absoluteOnly": "必须是绝对路径",
+    "validateBtn": "校验",
+    "validating": "校验中…",
+    "validated": "校验通过",
+    "validationFailed": "校验未通过",
+    "startBtn": "开始迁移",
+    "cancelBtn": "取消"
+  },
+  "preview": {
+    "fileCount": "待复制文件",
+    "totalBytes": "总大小",
+    "targetExists": "目标目录已存在",
+    "targetEmpty": "目标目录为空",
+    "warnings": "提示",
+    "errors": "无法迁移"
+  },
+  "running": {
+    "title": "迁移进行中…",
+    "currentFile": "正在复制",
+    "phaseScan": "扫描源目录…",
+    "phaseCopy": "复制文件 {{copied}} / {{total}}",
+    "phasePointer": "写入指针文件…",
+    "warning": "迁移期间，所有 LLM 请求会被拒绝（503）。请勿关闭本页面或杀掉进程。"
+  },
+  "done": {
+    "title": "迁移完成",
+    "body": "数据已复制到 {{dir}}。请手动重启 mimo2codex 服务以加载新目录。原目录已保留，你可以在确认新目录工作正常后再手动删除。",
+    "closeBtn": "我已了解"
+  },
+  "error": {
+    "title": "迁移失败",
+    "body": "错误代码：{{code}}\n{{message}}",
+    "retryBtn": "重试"
+  },
+  "banner": {
+    "title": "服务需要重启",
+    "body": "数据目录已迁移到 {{dir}}。请手动重启 mimo2codex（关闭进程后重新启动）以让新目录生效。"
+  }
+}

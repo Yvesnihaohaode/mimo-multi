@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import {
   Button,
   Dropdown,
-  Input,
   Layout,
   Modal,
   Popover,
@@ -26,6 +25,7 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { api, type MappingRow, type ProviderInfo } from "../api/client";
+import DataDirManager from "./DataDirManager";
 import {
   useAppConfig,
   type ThemeMode,
@@ -276,21 +276,20 @@ function SectionModal({
   const { t } = useTranslation("settings");
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [mappings, setMappings] = useState<MappingRow[]>([]);
-  const [dataDir, setDataDir] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Lazy-load only what's needed for the current section, so a single open
-  // doesn't fan out to three /admin/api/* calls when the user only wants one
-  // of them.
+  // doesn't fan out to multiple /admin/api/* calls when the user only wants
+  // one of them. The dataDir section owns its own loading (see DataDirManager)
+  // since it has its own async flows (preview + SSE migrate).
   useEffect(() => {
     if (section === null) return;
+    if (section === "dataDir") return;
     setLoading(true);
     const fetch =
       section === "providers"
         ? api.providers().then((r) => setProviders(r.providers))
-        : section === "mappings"
-          ? api.mappings().then((r) => setMappings(r.mappings))
-          : api.health().then((r) => setDataDir(r.dataDir));
+        : api.mappings().then((r) => setMappings(r.mappings));
     void fetch.finally(() => setLoading(false));
   }, [section]);
 
@@ -379,7 +378,7 @@ function SectionModal({
   const widthMap: Record<Section, number> = {
     providers: 880,
     mappings: 880,
-    dataDir: 520,
+    dataDir: 640,
   };
 
   return (
@@ -434,17 +433,7 @@ function SectionModal({
         </>
       )}
 
-      {section === "dataDir" && (
-        <>
-          <Input value={dataDir} disabled size="small" />
-          <Typography.Paragraph
-            type="secondary"
-            style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}
-          >
-            {t("dataDir.hint")}
-          </Typography.Paragraph>
-        </>
-      )}
+      {section === "dataDir" && <DataDirManager />}
     </Modal>
   );
 }

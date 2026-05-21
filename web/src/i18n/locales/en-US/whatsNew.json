@@ -1,0 +1,18 @@
+{
+  "title": "What's new",
+  "subtitle": "You just upgraded — here's what changed",
+  "subtitleMulti": "You skipped {{count}} releases — here's everything since",
+  "versionLabel": "v{{version}} · {{date}}",
+  "kind": {
+    "new": "New",
+    "improved": "Improved",
+    "fixed": "Fixed",
+    "doc": "Docs"
+  },
+  "locationLabel": "📍 Where to find it",
+  "footerHint": "Full changelog lives at doc/tag-log.md",
+  "actions": {
+    "close": "Got it",
+    "dontShowAgain": "Don't show again"
+  }
+}

@@ -28,11 +28,14 @@ import { ProviderBlock } from "./ProviderBlock";
 import { RuntimeOverrideCard } from "./RuntimeOverrideCard";
 import { BackupCard } from "./BackupCard";
 import { HistoryPanel } from "./HistoryPanel";
+import { useAuth } from "../../contexts/AuthContext";
 
 export function CodexEnable() {
   const { t } = useTranslation("codexEnable");
   const { t: tCommon } = useTranslation("common");
   const { t: tTour } = useTranslation("tour");
+  const { authMode } = useAuth();
+  const isServerMode = authMode === "on";
   const [modal, modalCtx] = Modal.useModal();
   const stateCardRef = useRef<HTMLDivElement>(null);
   const prereqRef = useRef<HTMLDivElement>(null);
@@ -553,11 +556,18 @@ export function CodexEnable() {
                 />
               ) : null,
             },
-            {
-              key: "history",
-              label: t("tabs.history", { defaultValue: "History" }),
-              children: <HistoryPanel />,
-            },
+            // History tab tracks codex-apply / restore / import audit trail —
+            // only meaningful in Docker auth deployments where multiple operators
+            // share the proxy. Hide in local single-user mode.
+            ...(isServerMode
+              ? [
+                  {
+                    key: "history",
+                    label: t("tabs.history", { defaultValue: "History" }),
+                    children: <HistoryPanel />,
+                  },
+                ]
+              : []),
           ]}
         />
       </div>

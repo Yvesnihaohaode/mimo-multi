@@ -382,7 +382,7 @@ export interface UpstreamKeySummary {
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; dataDir: string; version: string; authMode: "off" | "on" }>("GET", "/health"),
+  health: () => request<HealthResponse>("GET", "/health"),
   authMe: () => request<AuthMeResponse>("GET", "/auth/me"),
   login: (body: { username: string; password: string }) =>
     request<{ user: AuthUser }>("POST", "/auth/login", body),
@@ -573,7 +573,63 @@ export const api = {
   // SSE-based update endpoint — returns the URL so callers can use EventSource
   // directly (the shared `request` wrapper is JSON-only).
   updateStreamUrl: () => `${BASE}/update`,
+  // ── Data directory management ────────────────────────────────────────────
+  dataDirInfo: () => request<DataDirInfo>("GET", "/data-dir/info"),
+  dataDirPreview: (targetDir: string) =>
+    request<DataDirPreview>("POST", "/data-dir/preview", { targetDir }),
+  dataDirMigrateStreamUrl: () => `${BASE}/data-dir/migrate`,
 };
+
+// /admin/api/health extended response. Existing fields stay; `maintenance` and
+// `restartRequired` are new — falsy in normal operation, flipped by the data-
+// directory migration flow.
+export interface HealthResponse {
+  ok: boolean;
+  dataDir: string;
+  version: string;
+  authMode: "off" | "on";
+  maintenance?: boolean;
+  restartRequired?: boolean;
+  restartReason?: string | null;
+  restartTargetDir?: string | null;
+}
+
+export interface DataDirInfo {
+  current: string;
+  source: "cli" | "env" | "pointer" | "default";
+  defaultDir: string;
+  envOverride: string | null;
+  pointerValue: string | null;
+  pointerPath: string;
+  editable: boolean;
+}
+
+export interface DataDirPreview {
+  ok: boolean;
+  resolved: string;
+  fileCount: number;
+  totalBytes: number;
+  sameVolumeHint: boolean;
+  targetExists: boolean;
+  targetEmpty: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
+export type MigrationStreamEntry =
+  | { type: "start"; ts: number; srcDir: string; destDir: string }
+  | { type: "scan"; fileCount: number; totalBytes: number }
+  | {
+      type: "progress";
+      copiedFiles: number;
+      copiedBytes: number;
+      totalFiles: number;
+      totalBytes: number;
+      currentFile: string;
+    }
+  | { type: "pointer"; path: string }
+  | { type: "done"; ts: number; destDir: string }
+  | { type: "error"; code: string; message: string };
 
 // /admin/api/update-status response. Backend computes `hasUpdate` after
 // comparing cached `latest` against the current version, and surfaces the

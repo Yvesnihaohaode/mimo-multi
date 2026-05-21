@@ -22,6 +22,7 @@ import { insertLog, type ChatLogEntry } from "./db/logs.js";
 import { getActiveOverride, type ActiveOverride } from "./db/overrides.js";
 import { getSetting } from "./db/settings.js";
 import { redactSensitive } from "./util/redact.js";
+import { isMaintenance, getMaintenanceMessage } from "./util/maintenance.js";
 
 // Wraps getActiveOverride() so the per-request DB lookup is safe when:
 //   - admin is disabled (no DB open → getDb() would throw),
@@ -1262,6 +1263,35 @@ export function startServer(cfg: Config): Server {
         baseUrl: cfg.baseUrl,
       });
       return;
+    }
+
+    // Maintenance mode: while a data-directory migration is in progress, every
+    // route except the admin endpoints that drive/observe the migration itself
+    // returns 503 so the SQLite file stays untouched. The whitelist must keep
+    // the SPA shell loading too (otherwise the user can't see the progress UI).
+    if (isMaintenance()) {
+      const allowAdmin =
+        url.startsWith("/admin/api/health") ||
+        url.startsWith("/admin/api/data-dir") ||
+        // Allow the static SPA assets and admin shell so the page can stay open.
+        (cfg.adminEnabled &&
+          (url === "/admin" || url === "/admin/" ||
+            (url.startsWith("/admin/") && !url.startsWith("/admin/api/"))));
+      if (!allowAdmin) {
+        res.statusCode = 503;
+        res.setHeader("Retry-After", "60");
+        sendJson(
+          res,
+          503,
+          errorEnvelope(
+            503,
+            "maintenance_mode",
+            getMaintenanceMessage() ??
+              "server is migrating data directory; please wait or restart"
+          )
+        );
+        return;
+      }
     }
 
     // Resolve the calling user (or null in local mode). The guard may also

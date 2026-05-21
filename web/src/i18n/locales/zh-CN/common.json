@@ -25,6 +25,7 @@
   "footer": {
     "feedback": "反馈 / Issues",
     "docs": "文档",
+    "docsTooltip": "完整文档与教程都在这里 —— 不懂的先来这里看",
     "license": "MIT License"
   }
 }

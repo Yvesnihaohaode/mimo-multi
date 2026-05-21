@@ -144,6 +144,18 @@ These bite people; use them when writing chat-completions calls:
 For the canonical reference, hit
 `https://platform.xiaomimimo.com/docs/api/chat/openai-api`.
 
+## Change workflow rules
+
+These apply to every change made in this repo, on top of the technical hard rules above:
+
+1. **Never commit on the user's behalf.** Do not run `git commit`, `git add` with intent to commit, `git push`, `git tag`, or any release script (`npm run release:patch / release:minor / release:major / release:beta`). The user reviews the working tree and commits / publishes manually. Read-only inspection (`git status`, `git diff`, `git log`) and branch creation are fine; surface "what changed and where" at the end of the task and leave staging untouched.
+
+2. **Log every non-trivial change in BOTH `tag-log` and `release-notes`.** A change worth a `[new]` / `[opt]` / `[fix]` / `[doc]` tag must land in both files — they're complementary, never update only one:
+   - **`doc/tag-log.md` + `doc/tag-log.zh.md`** — developer-facing verbose changelog. Append under the current upcoming-version block, or create a new `## vX.Y.Z — YYYY-MM-DD` section at the top. Keep the bilingual files in lockstep.
+   - **`web/src/release-notes.tsx`** — user-facing in-app "What's new" modal. Add a `ReleaseHighlight` to the matching `ReleaseNote`, or prepend a new entry when bumping the version. Each highlight needs bilingual `title` + `description` + a `kind` (`new`/`improved`/`fixed`/`doc`); add an optional `location` so users can find the new thing in the UI ("教学" part), and an optional `ctaLabel` + `ctaPath` (in-app route) / `ctaHref` (external link).
+
+   The user bumps the version with `npm run release:*` themselves (see rule 1); the new modal pops on first admin load after the proxy restarts.
+
 ## When in doubt
 
 - Read `README.md` (English) or `README.zh.md` (Chinese) for the proxy itself.

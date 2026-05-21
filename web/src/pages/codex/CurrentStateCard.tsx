@@ -71,6 +71,8 @@ export function CurrentStateCard({
 }) {
   const { t } = useTranslation("codexEnable");
   const { t: tAuth } = useTranslation("auth");
+  const { authMode } = useAuth();
+  const isServerMode = authMode === "on";
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -89,24 +91,31 @@ export function CurrentStateCard({
       title={t("state.title")}
       style={{ marginBottom: 16 }}
       extra={
-        <Space>
-          <Tooltip title={tAuth("codex.exportTip")} placement="bottomRight">
-            <Button
-              icon={<CloudDownloadOutlined />}
-              onClick={() => setExportOpen(true)}
-            >
-              {tAuth("codex.exportLocal")}
-            </Button>
-          </Tooltip>
-          <Tooltip title={tAuth("codex.importTip")} placement="bottomRight">
-            <Button
-              icon={<CloudUploadOutlined />}
-              onClick={() => setImportOpen(true)}
-            >
-              {tAuth("codex.importLocal")}
-            </Button>
-          </Tooltip>
-        </Space>
+        // Export / Import only make sense in Docker auth deployments where
+        // operators ship rendered auth.json + config.toml to remote machines
+        // that can't reach this admin UI. Local single-user runs already have
+        // those files written to disk by mimo2codex itself, so the buttons
+        // would be confusing noise.
+        isServerMode ? (
+          <Space>
+            <Tooltip title={tAuth("codex.exportTip")} placement="bottomRight">
+              <Button
+                icon={<CloudDownloadOutlined />}
+                onClick={() => setExportOpen(true)}
+              >
+                {tAuth("codex.exportLocal")}
+              </Button>
+            </Tooltip>
+            <Tooltip title={tAuth("codex.importTip")} placement="bottomRight">
+              <Button
+                icon={<CloudUploadOutlined />}
+                onClick={() => setImportOpen(true)}
+              >
+                {tAuth("codex.importLocal")}
+              </Button>
+            </Tooltip>
+          </Space>
+        ) : null
       }
     >
       <ImportConfigModal

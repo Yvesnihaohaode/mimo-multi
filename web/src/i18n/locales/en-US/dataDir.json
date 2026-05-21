@@ -1,0 +1,57 @@
+{
+  "title": "Local data directory",
+  "currentLabel": "Current path",
+  "source": {
+    "label": "Resolved from",
+    "cli": "boot flag (--data-dir)",
+    "env": "env var (MIMO2CODEX_DATA_DIR)",
+    "pointer": "Admin UI setting",
+    "default": "default"
+  },
+  "lockedHint": "The data directory is pinned by a boot flag or env var — the UI can't change it. Remove --data-dir or MIMO2CODEX_DATA_DIR and restart to manage it from here.",
+  "editableHint": "You can migrate the data to a new directory. The whole SQLite database, .env and providers.json are copied; restart the service after migration to load from the new location.",
+  "pointerPath": "Pointer file",
+  "pointerHint": "After migration the new directory is persisted at {{path}}. On boot the resolver checks CLI > env > pointer file > default.",
+  "migrateBtn": "Migrate to a new directory",
+  "form": {
+    "label": "New directory path",
+    "placeholder": "/absolute/path/to/new/dir",
+    "absoluteOnly": "Must be an absolute path",
+    "validateBtn": "Validate",
+    "validating": "Validating…",
+    "validated": "Validation passed",
+    "validationFailed": "Validation failed",
+    "startBtn": "Start migration",
+    "cancelBtn": "Cancel"
+  },
+  "preview": {
+    "fileCount": "Files to copy",
+    "totalBytes": "Total size",
+    "targetExists": "Target already exists",
+    "targetEmpty": "Target is empty",
+    "warnings": "Notes",
+    "errors": "Cannot migrate"
+  },
+  "running": {
+    "title": "Migration in progress…",
+    "currentFile": "Copying",
+    "phaseScan": "Scanning source…",
+    "phaseCopy": "Copying file {{copied}} / {{total}}",
+    "phasePointer": "Writing pointer file…",
+    "warning": "While migrating, all LLM requests are refused with 503. Do not close this page or kill the process."
+  },
+  "done": {
+    "title": "Migration complete",
+    "body": "Data copied to {{dir}}. Restart mimo2codex manually to load the new directory. The original directory is preserved — delete it yourself after you've confirmed the new location works.",
+    "closeBtn": "Got it"
+  },
+  "error": {
+    "title": "Migration failed",
+    "body": "Error code: {{code}}\n{{message}}",
+    "retryBtn": "Retry"
+  },
+  "banner": {
+    "title": "Server restart required",
+    "body": "Data directory was migrated to {{dir}}. Restart mimo2codex manually (kill + relaunch) so the new directory takes effect."
+  }
+}
