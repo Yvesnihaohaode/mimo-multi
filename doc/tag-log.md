@@ -17,6 +17,12 @@ Release history of mimo2codex, newest first.
 
 ---
 
+## (v0.4.8 — 2026-05-23)
+
+- **[new]** **Desktop preview (beta) — Windows tray / macOS menu-bar app**: optional Electron companion that runs mimo2codex in the background — no terminal window required. First launch shows a small settings window to pick a provider + paste an API key; after that the tray / menu-bar icon opens the embedded admin UI (either in a window or in your default browser). The sidecar lifecycle (start / stop / restart on settings change) is fully managed; menu **Quit** stops it cleanly. Includes an opt-in "Start on system boot" toggle. The CLI install (`npm install -g mimo2codex`) is unchanged and can coexist on the same machine — the desktop build ships as a separate `v*-desktop` artifact. This is a **beta** — installer, launch, sidecar, and auto-update flows still need real-world miles, so please report friction. Downloads + install guide: <https://mimodoc.chengj.online/download>.
+
+---
+
 ## (v0.4.6 — 2026-05-23)
 
 - **[fix]** **DeepSeek V4 400 `Invalid assistant message: content or tool_calls must be set` ([issue #29](https://github.com/7as0nch/mimo2codex/issues/29))**: when an assistant turn was assembled from a reasoning item + function_call without any visible text part (Codex Chrome plugin pattern), the wire shape became `{role:"assistant", content: null, tool_calls:[…], reasoning_content:"…"}`. DeepSeek's strict validator treats explicit `null` as "neither field present" and rejects. The OpenAI Chat Completions spec says `content` is optional when `tool_calls` is set, so we now OMIT the field instead of setting it to null. Reasoning-only fallback turns (rare: no text, no tools) get `content: ""` to satisfy the spec.

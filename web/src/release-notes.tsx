@@ -14,6 +14,7 @@
 // CTA that navigates straight to it.
 
 import type { ReactNode } from "react";
+import { DesktopOutlined } from "@ant-design/icons";
 
 export interface BilingualText {
   en: string;
@@ -48,37 +49,55 @@ export interface ReleaseNote {
 // lives in doc/tag-log.{md,zh.md} for users who want the full history.
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "0.4.6",
+    version: "0.4.8",
     date: "2026-05-23",
     title: {
-      en: "Proxy support",
-      zh: "部分体验的优化",
+      en: "Desktop preview (beta) — Windows / macOS downloads",
+      zh: "桌面预览（beta）—— Windows / macOS 包下载",
+    },
+    summary: {
+      en: "First beta of the mimo2codex desktop app. Runs in the background as a tray / menu-bar process; no terminal required. We'd love your install + first-run feedback.",
+      zh: "mimo2codex 桌面端首个 beta。以系统托盘 / 顶栏进程后台运行，不依赖终端窗口。欢迎试用并反馈安装 + 首次启动的体验。",
     },
     highlights: [
       {
-        kind: "fixed",
+        kind: "new",
+        icon: <DesktopOutlined />,
         title: {
-          en: "DeepSeek 400 \"Invalid assistant message\" with Chrome plugin",
-          zh: "Chrome 插件触发 DeepSeek 400 \"Invalid assistant message\" 已修复",
+          en: "Windows tray / macOS menu-bar app (beta)",
+          zh: "Windows 系统托盘 / macOS 顶栏桌面端（beta）",
         },
         description: {
-          en: "When an assistant turn was assembled from a reasoning item plus function_call without any visible text part (Codex Chrome plugin pattern), the translated wire shape carried an explicit content: null alongside tool_calls. DeepSeek V4's strict validator treats that as \"neither field present\" and 400s. The OpenAI spec says content is optional when tool_calls is set, so we now omit the field instead of sending null. Reasoning-only turns get content: \"\" to stay spec-valid. Fixes issue #29.",
-          zh: "当 assistant 回合由 reasoning + function_call 拼成、没有可见 text 时（Codex Chrome 插件场景），翻译产物里会带显式 content: null 和 tool_calls。DeepSeek V4 的严格校验把这种形状当成\"两个字段都没\"于是 400。OpenAI 规范规定 tool_calls 存在时 content 是可选的，现在直接省略该字段而不是发 null。reasoning-only 回合回落到 content: \"\" 保持合规。修复 issue #29。",
+          en: "Optional companion app that runs mimo2codex in the background — no terminal window kept open. First launch shows a small settings window to pick a provider + paste an API key; after that the tray / menu-bar icon opens the admin UI in a window or your default browser. Quit from the menu stops the sidecar cleanly. The CLI install (`npm install -g mimo2codex`) is unchanged and can coexist on the same machine. This is a beta — please report any installer / launch / sidecar issues on the download page or via a GitHub issue.",
+          zh: "可选的桌面壳子，后台跑 mimo2codex，不用一直开着终端窗口。首次启动会有个小设置窗让你选 provider 并粘贴 API Key；之后从系统托盘 / 顶栏图标一键打开 admin UI（窗内或默认浏览器）。菜单 Quit 干净退出 sidecar。命令行版（`npm install -g mimo2codex`）完全不变，两者可在同一台机器共存。这是 beta —— 安装 / 启动 / sidecar 相关问题欢迎在下载页或 GitHub issue 反馈。",
         },
         location: {
-          en: "Codex onboarding → DeepSeek (any model)",
-          zh: "Codex 接入 → DeepSeek（任意模型）",
+          en: "Windows system tray / macOS menu bar — appears after install",
+          zh: "Windows 系统托盘 / macOS 顶栏 —— 安装完成后即可见",
+        },
+        ctaLabel: { en: "Download & feedback", zh: "下载体验 & 反馈" },
+        ctaHref: "https://mimodoc.chengj.online/download",
+      },
+      {
+        kind: "fixed",
+        title: {
+          en: "DeepSeek 400 \"Invalid assistant message\" with Chrome plugin (issue #29)",
+          zh: "Chrome 插件触发 DeepSeek 400 \"Invalid assistant message\" 已修复（issue #29）",
+        },
+        description: {
+          en: "Assistant turns translated from a reasoning + function_call sequence (Codex Chrome plugin pattern) no longer emit `content: null` — DeepSeek V4 rejected that shape. The field is now omitted per OpenAI spec when tool_calls is present; reasoning-only turns get `content: \"\"`.",
+          zh: "由 reasoning + function_call 拼成的 assistant 回合（Codex Chrome 插件场景）不再发 `content: null` —— DeepSeek V4 之前会按\"两个字段都没\"拒绝。tool_calls 存在时按 OpenAI 规范省略 content；reasoning-only 回合补 `content: \"\"`。",
         },
       },
       {
         kind: "fixed",
         title: {
-          en: "Windows + pnpm-global + Node 22 startup no longer crashes",
-          zh: "Windows + pnpm 全局安装 + Node 22 启动不再崩溃",
+          en: "Windows + pnpm-global + Node 22 startup no longer crashes (issue #30)",
+          zh: "Windows + pnpm 全局安装 + Node 22 启动不再崩溃（issue #30）",
         },
         description: {
-          en: "On Windows with pnpm global install and Node 22, better-sqlite3 sometimes can't load its native binding (no prebuilt for node-v127-win32-x64), and mimo2codex would exit on startup with \"Could not locate the bindings file\". The proxy now logs a clear, multi-line warning (with the underlying error and a Windows/pnpm-specific remediation hint) and starts with the admin DB DISABLED. Core Codex ↔ Chat-Completions translation never needed the DB, so the proxy is fully usable out-of-the-box on the install setups that hit this binding gap. Fixes issue #30.",
-          zh: "Windows + pnpm 全局安装 + Node 22 时，better-sqlite3 有时拿不到对应 ABI (node-v127-win32-x64) 的 prebuilt native binding，mimo2codex 之前会直接退出报 \"Could not locate the bindings file\"。现在改成打印一段多行告警（包含原始错误信息和针对 Windows / pnpm 的修复建议）然后以 admin 关闭模式继续启动。核心 Codex ↔ Chat-Completions 翻译本来就不依赖 DB —— 让命中 binding 缺失的安装方式也能开箱可用。修复 issue #30。",
+          en: "When better-sqlite3's native binding can't load (typical: pnpm global on Windows with no prebuilt for Node 22's ABI), mimo2codex now logs a clear warning and starts with the admin DB disabled instead of exiting. Core proxy translation never needed the DB.",
+          zh: "better-sqlite3 native binding 加载失败时（典型：Windows pnpm 全局安装且 Node 22 没拿到对应 ABI 的 prebuilt），mimo2codex 现在打印清晰告警并以 admin 关闭模式继续启动，不再退出。代理核心翻译本来就不依赖 DB。",
         },
       },
     ],

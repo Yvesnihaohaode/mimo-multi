@@ -17,6 +17,12 @@ mimo2codex 的版本发布历史，按 tag 倒序排列。
 
 ---
 
+## (v0.4.8 — 2026-05-23)
+
+- **[new]** **桌面预览（beta）—— Windows 系统托盘 / macOS 顶栏桌面端**：可选的 Electron 壳子，后台跑 mimo2codex，不用一直挂着终端窗口。首次启动会有个小设置窗让你选 provider 并粘贴 API Key；之后从系统托盘 / 顶栏图标一键打开内嵌的 admin UI（窗内或默认浏览器都行）。sidecar 生命周期（启动 / 停止 / 改设置时重启）完全托管，菜单 **Quit** 干净退出。提供可选的"开机自启"开关。命令行版（`npm install -g mimo2codex`）完全不变，两者可在同一台机器共存 —— 桌面版作为独立的 `v*-desktop` 制品发布。这是 **beta** —— 安装、启动、sidecar、自更新链路还需要真实环境的里程验证，遇到任何卡点请反馈。下载和安装指引：<https://mimodoc.chengj.online/download>。
+
+---
+
 ## (v0.4.6 — 2026-05-23)
 
 - **[fix]** **DeepSeek V4 400 `Invalid assistant message: content or tool_calls must be set` ([issue #29](https://github.com/7as0nch/mimo2codex/issues/29))**：当某个 assistant 回合由 reasoning + function_call 拼成、且没有可见 text 时（典型场景：Codex Chrome 插件），翻译产物形状是 `{role:"assistant", content: null, tool_calls:[…], reasoning_content:"…"}`。DeepSeek 的严格校验把显式 `null` 当成"两个字段都没有"于是 400。OpenAI Chat Completions 规范规定 `tool_calls` 存在时 `content` 是可选的，现在直接省略该字段而不是发 `null`。reasoning-only 兜底回合（少见：无 text 无 tools）回落到 `content: ""` 以满足"content 或 tool_calls 必须存在"。
