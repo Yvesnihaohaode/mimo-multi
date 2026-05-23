@@ -39,6 +39,7 @@ declare global {
       send: (msg: unknown) => void;
       on: (handler: (msg: import("../src/ipc.js").MainToRenderer) => void) => () => void;
       openPath: (p: string) => void;
+      chooseDataDir: () => void;
     };
   }
 }

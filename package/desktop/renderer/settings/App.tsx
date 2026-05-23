@@ -15,6 +15,7 @@ export function App() {
   const [provider, setProvider] = useState<"mimo" | "deepseek" | "generic">("mimo");
   const [apiKey, setApiKey] = useState("");
   const [port, setPort] = useState(8788);
+  const [dataDir, setDataDirField] = useState("");
   const [autostart, setAutostartFlag] = useState(false);
   const [showAdminAfter, setShowAdminAfter] = useState(true);
 
@@ -23,6 +24,7 @@ export function App() {
       if (msg.type === "settings:loaded") {
         setState(msg.payload);
         setPort(msg.payload.runtime.port);
+        setDataDirField(msg.payload.userDataDir);
         setAutostartFlag(msg.payload.runtime.autostart);
         // Pick first provider whose key already exists in env, default mimo
         const firstProvider = PROVIDER_KEYS.find(p => msg.payload.env[p.envKey]);
@@ -30,6 +32,8 @@ export function App() {
           setProvider(firstProvider.provider);
           setApiKey(msg.payload.env[firstProvider.envKey]);
         }
+      } else if (msg.type === "settings:dataDirChosen") {
+        if (msg.payload.path) setDataDirField(msg.payload.path);
       }
     });
     window.m2c.send({ type: "settings:load" });
@@ -45,9 +49,14 @@ export function App() {
       payload: {
         runtime: { ...state.runtime, port, autostart },
         env: { ...state.env, [envKey]: apiKey },
+        dataDir: dataDir.trim(),
         showAdminUiAfterSave: showAdminAfter,
       },
     });
+  };
+
+  const onBrowseDataDir = () => {
+    window.m2c.chooseDataDir();
   };
 
   const onCancel = () => {
@@ -58,7 +67,7 @@ export function App() {
     ? "sk-xxxxxxxx (or tp-xxxxxxxx for token-plan)"
     : "sk-xxxxxxxx";
 
-  const canSave = apiKey.trim().length > 0 && port > 0 && port < 65536;
+  const canSave = apiKey.trim().length > 0 && port > 0 && port < 65536 && dataDir.trim().length > 0;
 
   return (
     <div style={{ padding: 24 }}>
@@ -92,15 +101,18 @@ export function App() {
           <InputNumber min={1} max={65535} value={port} onChange={(v) => setPort(v ?? 8788)} />
         </Form.Item>
         <Form.Item label="Data location">
-          <Input
-            value={state.userDataDir}
-            readOnly
-            addonAfter={
-              <a onClick={() => window.m2c.openPath(state.userDataDir)}>Open</a>
-            }
-          />
+          <Space.Compact style={{ width: "100%" }}>
+            <Input
+              value={dataDir}
+              onChange={(e) => setDataDirField(e.target.value)}
+              placeholder="Path where .env, runtime.json and the SQLite DB are stored"
+            />
+            <Button onClick={onBrowseDataDir}>Browse...</Button>
+            <Button onClick={() => window.m2c.openPath(dataDir)}>Open</Button>
+          </Space.Compact>
           <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
             Your API key is stored in plain text at <code>.env</code> inside this folder.
+            Changing the path on Save will <strong>migrate existing files</strong> to the new location.
             Include this folder when filing a bug report (but redact the key first).
           </Typography.Text>
         </Form.Item>

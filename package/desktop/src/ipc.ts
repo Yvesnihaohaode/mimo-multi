@@ -5,14 +5,16 @@ import type { RuntimeConfig, SidecarStatus } from "../shared/types.js";
 
 export type RendererToMain =
   | { type: "settings:load" }
-  | { type: "settings:save"; payload: { runtime: RuntimeConfig; env: Record<string, string>; showAdminUiAfterSave: boolean } }
+  | { type: "settings:save"; payload: { runtime: RuntimeConfig; env: Record<string, string>; dataDir: string; showAdminUiAfterSave: boolean } }
   | { type: "settings:cancel"; payload: { isFirstRun: boolean } }
+  | { type: "settings:chooseDataDir" }
   | { type: "shell:openPath"; payload: { path: string } }
   | { type: "logs:subscribe" }
   | { type: "logs:unsubscribe" };
 
 export type MainToRenderer =
   | { type: "settings:loaded"; payload: { runtime: RuntimeConfig; env: Record<string, string>; isFirstRun: boolean; userDataDir: string } }
+  | { type: "settings:dataDirChosen"; payload: { path: string | null } }
   | { type: "status"; payload: SidecarStatus }
   | { type: "logs:line"; payload: { line: string; channel: "stdout" | "stderr" } };
 

@@ -18,4 +18,7 @@ contextBridge.exposeInMainWorld("m2c", {
   openPath: (p: string): void => {
     ipcRenderer.send(IPC_CHANNEL, { type: "shell:openPath", payload: { path: p } });
   },
+  chooseDataDir: (): void => {
+    ipcRenderer.send(IPC_CHANNEL, { type: "settings:chooseDataDir" });
+  },
 });

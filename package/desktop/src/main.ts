@@ -10,6 +10,7 @@ import { findFreePort } from "./portProbe.js";
 import { loadRuntime, saveRuntime } from "./runtime.js";
 import { sidecarPaths } from "./paths.js";
 import { notifyCrash } from "./notifier.js";
+import { getDataDir } from "./dataDir.js";
 
 /**
  * Poll http://127.0.0.1:{port}/admin/ until the sidecar's HTTP server is
@@ -43,9 +44,12 @@ async function waitForSidecarHttp(port: number, timeoutMs = 30_000): Promise<boo
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function main(): Promise<void> {
-  const userDataDir = app.getPath("userData");
-  initLogger(userDataDir);
-  log.info("mimo2codex-desktop starting", { userDataDir, version: app.getVersion() });
+  // Always initialize the logger at the OS-canonical userData dir first —
+  // log writes happen before the user can change the data dir, and we want
+  // boot logs in a stable location regardless of override state.
+  const bootLogDir = app.getPath("userData");
+  initLogger(bootLogDir);
+  log.info("mimo2codex-desktop starting", { bootLogDir, version: app.getVersion() });
 
   // Single-instance lock (Task 4.3.1 — A1)
   const gotLock = app.requestSingleInstanceLock();
@@ -101,6 +105,11 @@ async function main(): Promise<void> {
   }
 
   // ── Sidecar setup ───────────────────────────────────────────────────────
+  // Resolve the effective data dir AFTER app.whenReady (getDataDir reads the
+  // override marker at the OS-canonical userData, which is only stable then).
+  let userDataDir = getDataDir();
+  log.info("effective data dir", { userDataDir });
+
   const runtime = loadRuntime(userDataDir);
   const port = await findFreePort(runtime.port);
   if (port !== runtime.port) {
@@ -160,18 +169,22 @@ async function main(): Promise<void> {
   const openSettingsWindow = () => openSettings({
     onSaved: async ({ showAdminUiAfterSave }) => {
       log.info("settings saved", { showAdminUiAfterSave });
-      // Restart sidecar after save (port may have changed, env definitely did).
+      // Restart sidecar after save. The data dir may have changed (settings
+      // window already migrated files + wrote the override marker), so we
+      // re-resolve here and propagate to the sidecar.
       try {
         await sidecar.stop();
       } catch (err) {
         log.warn("stop before restart failed", { error: (err as Error).message });
       }
+      userDataDir = getDataDir();
       const fresh = loadRuntime(userDataDir);
       const newPort = await findFreePort(fresh.port);
       saveRuntime(userDataDir, { ...fresh, port: newPort });
+      sidecar.setDataDir(userDataDir);
       sidecar.setPort(newPort);
       await sidecar.start();
-      log.info("sidecar restarted after settings save", { port: newPort, showAdminUiAfterSave });
+      log.info("sidecar restarted after settings save", { port: newPort, dataDir: userDataDir, showAdminUiAfterSave });
       if (showAdminUiAfterSave) openAdminWhenReady();
     },
     onCancelInFirstRun: () => {

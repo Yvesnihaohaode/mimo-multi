@@ -45,6 +45,11 @@ export class SidecarManager extends EventEmitter {
     this.opts.port = port;
   }
 
+  /** Update the --data-dir passed on the NEXT start. Caller stops first. */
+  setDataDir(dir: string): void {
+    this.opts.dataDir = dir;
+  }
+
   async start(): Promise<void> {
     // Reset the intentional-stop flag so a stop()→start() cycle treats the
     // upcoming exit as unexpected (so auto-restart works again later).
