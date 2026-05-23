@@ -54,9 +54,22 @@ export default function Download() {
   const platform = override?.platform ?? detected?.platform ?? "unknown";
   const arch = override?.arch ?? detected?.arch ?? "unknown";
   const primaryKey = `${platform}-${arch}`;
-  const primaryAsset: DesktopAsset | undefined = release?.assets.find(
-    (a) => `${a.platform}-${a.arch}` === primaryKey && (a.ext === "exe" || a.ext === "dmg")
-  );
+  // Primary install format per platform:
+  //   Windows → .exe  (NSIS installer)
+  //   macOS   → .zip  (Finder unzips → drag .app to /Applications)
+  // The .dmg target was dropped from CI builds because GitHub-runner hdiutil
+  // versions produce unmountable images on consumer Macs — see
+  // electron-builder.yml. If a maintainer ever uploads a .dmg manually
+  // alongside (e.g. a locally-built signed dmg), prefer it as primary for
+  // Mac since that's the more familiar install format.
+  const primaryAsset: DesktopAsset | undefined = (() => {
+    if (!release) return undefined;
+    const matching = release.assets.filter((a) => `${a.platform}-${a.arch}` === primaryKey);
+    if (platform === "mac") {
+      return matching.find((a) => a.ext === "dmg") ?? matching.find((a) => a.ext === "zip");
+    }
+    return matching.find((a) => a.ext === "exe");
+  })();
   const otherAssets = release?.assets.filter((a) => a !== primaryAsset) ?? [];
 
   // Mac users see a "switch arch" link because Safari can't distinguish
@@ -257,6 +270,13 @@ export default function Download() {
         message={t("security.title")}
         description={
           <Space direction="vertical">
+            {/*
+              macInstall is shown for Mac users (or when detection fails — better
+              to show install instructions everyone might need than hide them).
+              Win install is trivial (double-click .exe → NSIS handles it) so
+              there's no symmetric "winInstall" line.
+            */}
+            {platform !== "win" && <span>{t("security.macInstall")}</span>}
             <span>{t("security.mac")}</span>
             <span>{t("security.win")}</span>
             <span>{t("security.sha")}</span>

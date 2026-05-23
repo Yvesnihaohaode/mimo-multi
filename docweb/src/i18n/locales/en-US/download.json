@@ -40,7 +40,8 @@
   },
   "security": {
     "title": "First launch will show a security warning",
-    "mac": "macOS: if you see \"App is damaged\" or \"can't be opened\", open Terminal and run: xattr -cr /Applications/mimo2codex.app  — this removes the download quarantine flag. Then double-click. (Right-click → Open works on some older macOS versions but not all; the xattr command always works.)",
+    "macInstall": "macOS install: the download is a .zip. Double-click it in Downloads — Finder unzips it to mimo2codex.app. Drag the .app into /Applications.",
+    "mac": "macOS first launch: if you see \"App is damaged\" or \"can't be opened\", open Terminal and run once: xattr -cr /Applications/mimo2codex.app  — this removes the download quarantine flag. Then double-click. (Right-click → Open works on some older macOS versions but not all; the xattr command always works.)",
     "win": "Windows: SmartScreen → \"More info\" → \"Run anyway\".",
     "sha": "These warnings are expected — desktop builds aren't code-signed yet. Verify the SHA256 above matches the file you downloaded.",
     "uninstall": "Uninstall: macOS — drag mimo2codex.app from /Applications to Trash; optionally wipe configs with `rm -rf ~/Library/Application\\ Support/mimo2codex-desktop`. Windows — Settings → Apps → mimo2codex → Uninstall."

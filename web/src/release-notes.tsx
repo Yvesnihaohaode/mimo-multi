@@ -64,8 +64,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
           zh: "桌面端（Windows 系统托盘 / macOS 顶栏）",
         },
         description: {
-          en: "Optional companion app that runs mimo2codex in the background — no terminal window required. First launch shows a 4-field settings form for picking a provider + API key; after that you open the admin UI in a window or your default browser straight from the tray. Quit from the menu stops the sidecar cleanly. The CLI version (`npm install -g mimo2codex`) is unchanged and lives alongside.",
-          zh: "可选的桌面壳子，后台跑 mimo2codex，不依赖终端窗口。首次启动会有 4 行设置窗让你填 provider 和 API Key；之后从托盘菜单一键打开 admin UI（窗内或浏览器）。菜单 Quit 干净退出 sidecar。命令行版（`npm install -g mimo2codex`）不变，两者可以共存。",
+          en: "Optional companion app that runs mimo2codex in the background — no terminal window required. First launch shows a 4-field settings form for picking a provider + API key; after that you open the admin UI in a window or your default browser straight from the tray. Quit from the menu stops the sidecar cleanly. Windows ships as `.exe` (NSIS installer), macOS as `.zip` (unzip, drag `mimo2codex.app` to `/Applications`). The CLI version (`npm install -g mimo2codex`) is unchanged and lives alongside.",
+          zh: "可选的桌面壳子，后台跑 mimo2codex，不依赖终端窗口。首次启动会有 4 行设置窗让你填 provider 和 API Key；之后从托盘菜单一键打开 admin UI（窗内或浏览器）。菜单 Quit 干净退出 sidecar。Windows 是 `.exe`（NSIS 安装器），macOS 是 `.zip`（双击解压，把 `mimo2codex.app` 拖到 `/Applications`）。命令行版（`npm install -g mimo2codex`）不变，两者可以共存。",
         },
         location: {
           en: "System tray (Win) / menu bar (Mac) — visible after install",

@@ -37,46 +37,27 @@ extraResources:
 mac:
   category: public.app-category.developer-tools
   icon: "../mac/icon.icns"
-  # `dmg` works best on macOS host; `zip` works from Windows/Linux cross-builds
-  # too. We ship both so users can pick whichever their host can produce.
+  # zip-only for Mac. We previously shipped dmg too, but multiple CI hdiutil
+  # versions (macos-14 and macos-15) and dmg formats (UDZO + ULFO) consistently
+  # produced technically-valid-but-unmountable images on consumer Macs
+  # ("此电脑不能读取你连接的磁盘" / "error 3840"). zip is boring and works
+  # everywhere — Finder unzips on double-click, user drags .app to /Applications.
+  # If we ever want dmg back, build it locally and `gh release upload --clobber`
+  # alongside; the download page already supports either ext.
   target:
-    - target: dmg
-      arch: [x64, arm64]
     - target: zip
       arch: [x64, arm64]
   hardenedRuntime: false
   gatekeeperAssess: false
   entitlements: "../mac/entitlements.mac.plist"
   entitlementsInherit: "../mac/entitlements.mac.plist"
+  artifactName: "mimo2codex-desktop-${version}-mac-${arch}.${ext}"
   # Menu-bar-only agent app: hide from Dock and Cmd+Tab (Task 9.1.1 — A2).
   # Info.plist `LSUIElement` is what runtime `app.dock?.hide()` *should*
   # have been all along — declarative, no startup flicker.
   extendInfo:
     LSUIElement: true
     NSHumanReadableCopyright: "© 2026 chengj"
-
-dmg:
-  # ULFO (LZFSE) is more robust than the default UDZO on macOS Sonoma+.
-  # UDZO has known cases of producing technically-valid-but-unmountable
-  # images on CI hdiutil versions; ULFO is the modern recommendation and
-  # supported back to macOS 10.11.
-  format: ULFO
-  # Skip writeUpdateInfo — we don't have an electron-updater pipeline and
-  # generating it has caused null-channel crashes before.
-  writeUpdateInfo: false
-  window:
-    width: 540
-    height: 380
-  contents:
-    - x: 140
-      y: 200
-      type: file
-    - x: 400
-      y: 200
-      type: link
-      path: /Applications
-  iconSize: 96
-  artifactName: "mimo2codex-desktop-${version}-mac-${arch}.${ext}"
 
 win:
   icon: "../win/icon.ico"
