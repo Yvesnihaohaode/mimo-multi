@@ -2,6 +2,15 @@ appId: com.chengj.mimo2codex
 productName: mimo2codex
 copyright: "© 2026 chengj"
 
+# Auto-update is intentionally disabled — the desktop shell tells users to
+# grab a new installer from /download instead of doing in-app upgrades (the
+# CLI sidecar runs under ELECTRON_RUN_AS_NODE and has no `npm install -g`
+# path available; see src/setup/updateMethod.ts desktop branch).
+# Setting `publish: null` also prevents electron-builder from trying to
+# compute update channels for each target — without this, builds crash with
+# "Cannot read properties of null (reading 'channel')" in updateInfoBuilder.
+publish: null
+
 directories:
   output: release
   buildResources: ../
