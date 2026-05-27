@@ -1,6 +1,6 @@
 {
   "name": "mimo-multi",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "description": "Enhanced fork of mimo2codex with visual fallback. Auto-detects images in requests and seamlessly switches non-vision MiMo models (pro/flash) to vision-capable models (v2.5). Local proxy for OpenAI Codex CLI/desktop ↔ Xiaomi MiMo.",
   "keywords": [
     "codex",
