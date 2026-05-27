@@ -18,6 +18,7 @@ import {
   ensureDataDirEnv,
   refreshDataDirExample,
 } from "./setup/initEnv.js";
+import { runSetupWizard } from "./setup/setupWizard.js";
 import { PROVIDER_LIST } from "./providers/registry.js";
 import {
   getCachedStatus,
@@ -59,6 +60,7 @@ const HELP = `mimo-multi v${VERSION} — local proxy: Codex Responses API → Ch
 
 USAGE
   mimo-multi [options]
+  mimo-multi setup
   mimo-multi init
   mimo-multi update
   mimo-multi print-config
@@ -128,6 +130,8 @@ DEFAULTS BAKED IN (no flag needed)
         separately billed) and restart, or accept that web search isn't available
 
 SUBCOMMANDS
+  setup                   interactive config wizard — generates ~/.codex/auth.json +
+                          config.toml for MiMo in seconds (no manual JSON/TOML editing)
   init                    bootstrap <data-dir>/.env + .env.example from the bundled
                           template. Idempotent: refreshes .env.example, only creates
                           .env if absent. Run this once after install, edit .env, then
@@ -491,6 +495,13 @@ async function main(): Promise<void> {
   const subcmd = parsed.positional[0];
   if (subcmd !== "print-config" && subcmd !== "print-cc-switch") {
     printLogo(VERSION);
+  }
+
+  // `setup` subcommand: interactive wizard that generates ~/.codex/auth.json
+  // and ~/.codex/config.toml. No manual editing required.
+  if (parsed.positional[0] === "setup") {
+    await runSetupWizard();
+    return;
   }
 
   // `init` subcommand: bootstrap <data-dir>/.env + .env.example and exit.

@@ -45,6 +45,37 @@ Requires Node.js >= 18.
 
 ## Quick Start
 
+### Auto Configuration (Recommended)
+
+One command, no manual file editing:
+
+```bash
+npm install -g mimo-multi
+mimo-multi setup
+```
+
+The wizard will ask you:
+1. Pick a default model (v2.5-pro / v2-pro / v2.5 / v2-omni / v2-flash)
+2. Enter your MiMo API Key
+3. Enable 1M context window
+4. Enable visual auto-fallback
+
+It writes `~/.codex/auth.json` and `~/.codex/config.toml` automatically — no JSON/TOML editing, no typos, no formatting errors.
+
+Then just run:
+
+```bash
+export MIMO_API_KEY=your-mimo-api-key
+mimo-multi --port 8788
+```
+
+Open Codex and start chatting. Send an image and watch the proxy logs for `[visual-fallback]`.
+
+### Manual Configuration
+
+<details>
+<summary>5-step manual setup (click to expand)</summary>
+
 ### 1. Get a MiMo API Key
 
 Go to [MiMo Console](https://platform.xiaomimimo.com) → API Keys → copy your key (`sk-` or `tp-` prefix).
@@ -102,6 +133,8 @@ codex
 ```
 
 Send an image and watch the proxy logs for `[visual-fallback]` — no manual steps needed.
+
+</details>
 
 For full documentation on all features (multi-provider, Docker, admin UI, generic providers, cc-switch integration, etc.), see the [upstream mimo2codex docs](https://github.com/7as0nch/mimo2codex).
 

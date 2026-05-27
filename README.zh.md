@@ -44,6 +44,37 @@ npm install -g mimo-multi
 
 ## 快速开始
 
+### 自动配置（推荐）
+
+一条命令，无需手动编辑文件：
+
+```bash
+npm install -g mimo-multi
+mimo-multi setup
+```
+
+配置向导会依次询问：
+1. 选择默认模型（v2.5-pro / v2-pro / v2.5 / v2-omni / v2-flash）
+2. 输入 MiMo API Key
+3. 是否启用 1M 长上下文
+4. 是否启用视觉自动回退（非视觉模型收到图片时自动切 v2.5）
+
+`~/.codex/auth.json` 和 `~/.codex/config.toml` 自动生成——不用手动写 JSON/TOML，不会打错字、不会格式错误。
+
+然后启动：
+
+```bash
+export MIMO_API_KEY=你的MiMo密钥
+mimo-multi --port 8788
+```
+
+打开 Codex 就能用了。发张图试试，代理日志里会看到 `[visual-fallback]`。
+
+### 手动配置
+
+<details>
+<summary>5 步手动配置（点击展开）</summary>
+
 ### 1. 获取 MiMo API Key
 
 前往 [MiMo 控制台](https://platform.xiaomimimo.com) → API Keys → 复制 key（`sk-` 或 `tp-` 开头）。
@@ -101,6 +132,8 @@ codex
 ```
 
 之后发图片就会看到代理日志中的 `[visual-fallback]` 提示，无需任何手动操作。
+
+</details>
 
 完整功能文档（多 provider、Docker、Admin UI、通用 provider、cc-switch 集成等）详见[上游 mimo2codex 文档](https://github.com/7as0nch/mimo2codex)。
 
