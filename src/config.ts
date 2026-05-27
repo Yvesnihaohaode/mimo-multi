@@ -280,7 +280,7 @@ export function buildConfig(parsed: ParsedArgs, env: NodeJS.ProcessEnv, version:
     apiKey: defaultRuntime.apiKey,
     exposeReasoning: parsed.exposeReasoning ?? exposeReasoningEnv,
     verbose: parsed.verbose ?? verboseEnv,
-    userAgent: `mimo2codex/${version}`,
+    userAgent: `mimo-multi/${version}`,
     defaultProviderId,
     providers,
     isTokenPlan: !!defaultRuntime.flags.isTokenPlan,

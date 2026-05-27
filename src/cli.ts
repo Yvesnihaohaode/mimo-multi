@@ -55,14 +55,14 @@ import {
 
 const VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 
-const HELP = `mimo2codex v${VERSION} — local proxy: Codex Responses API → Chat Completions (MiMo / DeepSeek)
+const HELP = `mimo-multi v${VERSION} — local proxy: Codex Responses API → Chat Completions (MiMo / DeepSeek) + visual fallback
 
 USAGE
-  mimo2codex [options]
-  mimo2codex init
-  mimo2codex update
-  mimo2codex print-config
-  mimo2codex print-cc-switch
+  mimo-multi [options]
+  mimo-multi init
+  mimo-multi update
+  mimo-multi print-config
+  mimo-multi print-cc-switch
 
 OPTIONS
   -p, --port <n>          listen port (default: 8788, env: MIMO2CODEX_PORT)
