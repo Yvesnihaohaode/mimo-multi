@@ -1,7 +1,7 @@
 {
-  "name": "mimo2codex",
+  "name": "mimo-multi",
   "version": "0.5.5",
-  "description": "Local proxy that lets the latest OpenAI Codex CLI / desktop talk to Xiaomi MiMo (V2.5 Pro) via the Responses API by translating to Chat Completions on the fly.",
+  "description": "Enhanced fork of mimo2codex with visual fallback. Auto-detects images in requests and seamlessly switches non-vision MiMo models (pro/flash) to vision-capable models (v2.5). Local proxy for OpenAI Codex CLI/desktop ↔ Xiaomi MiMo.",
   "keywords": [
     "codex",
     "codex-cli",
@@ -16,11 +16,14 @@
     "adapter",
     "router",
     "cc-switch",
-    "llm"
+    "llm",
+    "vision",
+    "visual-fallback",
+    "multimodal"
   ],
   "type": "module",
   "bin": {
-    "mimo2codex": "dist/cli.js"
+    "mimo-multi": "dist/cli.js"
   },
   "main": "dist/server.js",
   "files": [
@@ -78,12 +81,12 @@
   },
   "author": "7as0nch",
   "license": "MIT",
-  "homepage": "https://github.com/7as0nch/mimo2codex#readme",
+  "homepage": "https://github.com/Yvesnihaohaode/mimo-multi#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/7as0nch/mimo2codex.git"
+    "url": "git+https://github.com/Yvesnihaohaode/mimo-multi.git"
   },
   "bugs": {
-    "url": "https://github.com/7as0nch/mimo2codex/issues"
+    "url": "https://github.com/Yvesnihaohaode/mimo-multi/issues"
   }
 }

@@ -418,6 +418,28 @@ async function handleResponses(
     return respondToResponsesProbe(payload, res, !!payload.stream);
   }
 
+  // ---------- visual fallback (mimo-multi) ----------
+  const VISION_FB = "mimo-v2.5";
+  const NON_VISION = new Set(["mimo-v2.5-pro", "mimo-v2-pro", "mimo-v2-flash"]);
+  let _hasImg = false;
+  if (NON_VISION.has(payload.model) && Array.isArray(payload.input)) {
+    for (const item of payload.input) {
+      // Only message items have content; function_call / reasoning items don't
+      if (item.type !== "message") continue;
+      const content = item.content;
+      if (!Array.isArray(content)) continue;
+      for (const p of content) {
+        if (p.type === "input_image") { _hasImg = true; break; }
+      }
+      if (_hasImg) break;
+    }
+    if (_hasImg) {
+      log.info(`[visual-fallback] ${payload.model} → ${VISION_FB} (image detected)`);
+      payload.model = VISION_FB;
+    }
+  }
+  // ---------- end visual fallback ----------
+
   const selectedRaw = selectProvider(
     payload.model,
     cfg,
@@ -1050,6 +1072,27 @@ async function handleChatPassthrough(
     log.debug("matched probe shape — returning synthetic 200 without upstream call");
     return respondToChatProbe(payload, res, !!payload.stream);
   }
+
+  // ---------- visual fallback (mimo-multi) ----------
+  const VISION_FB_CC = "mimo-v2.5";
+  const NON_VISION_CC = new Set(["mimo-v2.5-pro", "mimo-v2-pro", "mimo-v2-flash"]);
+  let _hasImgCC = false;
+  if (NON_VISION_CC.has(payload.model) && Array.isArray(payload.messages)) {
+    for (const msg of payload.messages) {
+      const content = (msg as unknown as Record<string, unknown>).content;
+      if (!Array.isArray(content)) continue;
+      for (const p of content) {
+        const part = p as Record<string, unknown>;
+        if (part.type === "image_url" || part.type === "input_image") { _hasImgCC = true; break; }
+      }
+      if (_hasImgCC) break;
+    }
+    if (_hasImgCC) {
+      log.info(`[visual-fallback] ${payload.model} → ${VISION_FB_CC} (image detected in chat)`);
+      payload.model = VISION_FB_CC;
+    }
+  }
+  // ---------- end visual fallback ----------
 
   const selectedRaw = selectProvider(
     payload.model,

@@ -1,99 +1,78 @@
-# CLAUDE.md
+# CLAUDE.md — mimo-multi
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## 项目定位
 
-## What this project is
+**mimo-multi** 是 [mimo2codex](https://github.com/7as0nch/mimo2codex)（MIT 许可证）的增强 fork，核心功能是**视觉回退**：自动检测请求中的图片，将不支持视觉的模型（pro/flash）无缝切换到支持视觉的模型（v2.5）。
 
-mimo2codex is a local HTTP proxy (Node.js / TypeScript) that lets OpenAI's Codex CLI and desktop app talk to non-OpenAI LLM providers (MiMo, DeepSeek, and generic OpenAI-compatible services). It translates Codex's Responses API into Chat Completions on the fly, with per-request provider routing based on the `model` field.
-
-## Build and run commands
-
-```bash
-npm install                # install backend deps
-npm run build              # compile TypeScript → dist/
-npm run build:all          # backend + frontend (web/ admin UI)
-npm run dev                # run from source via tsx (auto-ensures web build)
-npm start                  # run compiled dist/cli.js
-npm test                   # vitest run (all tests)
-npm run test:watch         # vitest watch mode
-npx vitest run test/reqToChat.test.ts   # single test file
-npm run web:install        # install web/ deps (needed once before web:build)
-npm run web:dev            # Vite dev server on :5173, proxies /admin/api → :8788
-npm run web:build          # production build of admin UI → dist/web/
-```
-
-Release: `npm run release:patch`, `release:minor`, `release:major`, `release:beta`. See PUBLISHING.md for the full runbook.
-
-## Architecture
-
-### Request flow
+## 架构
 
 ```
-Codex Client → mimo2codex (:8788) → Provider selection (model field)
-  → reqToChat (Responses API → Chat Completions)
-  → upstream HTTP call to provider
-  → respToResponses / streamToSse (Chat Completions → Responses API SSE)
-  → back to Codex
+Codex 桌面端 → :8788 (mimo-multi / mimo2codex 代理) → MiMo API
+                                    ↑
+                          视觉回退补丁在此生效
 ```
 
-### Key source directories
+## 核心改动
 
-- **`src/providers/`** — Provider abstraction. `types.ts` defines the `Provider` interface; `mimo.ts`, `deepseek.ts`, `generic.ts` implement it. `registry.ts` maps model names to providers. MiMo-specific behavior (web_search, thinking injection) is confined to `mimo.ts` — don't leak it to generic layers.
-- **`src/translate/`** — Bidirectional API translation. `reqToChat.ts` (Responses → Chat Completions), `respToResponses.ts` (reverse), `streamToSse.ts` (streaming), `minimaxCompat.ts` (MiniMax quirks). These are provider-agnostic.
-- **`src/upstream/`** — HTTP client for upstream providers. `openaiCompatClient.ts` handles both streaming and non-streaming calls. `contextOverflow.ts` handles token limit errors.
-- **`src/db/`** — SQLite persistence via better-sqlite3. Chat logs, model catalog, runtime settings (e.g. thinking mode toggle). Default path: `~/.mimo2codex/data.db`.
-- **`src/admin/router.ts`** — REST API (`/admin/api/*`) and SPA hosting (`/admin/`).
-- **`src/server.ts`** — Core HTTP handler. `selectProvider` resolves which provider serves each request. `resolveDisableThinking` / `resolveForceHighEffort` read DB settings per-request (no restart needed).
-- **`src/cli.ts`** — Entry point. Subcommands: default (start server), `init`, `update`, `print-config`, `print-cc-switch`.
-- **`web/`** — React 18 + Ant Design 5 admin console, separate Vite workspace. Bilingual (EN/中文) via i18next. Builds to `dist/web/`.
-- **`mimoskill/`** — Python helpers (stdlib only, no pip). OCR, image gen, pet gen. Used when MiMo lacks native capabilities.
+仅修改 `src/server.ts` 一处，在 `selectProvider()` 调用前插入检测逻辑：
 
-### Provider routing
+```typescript
+// 位置：server.ts - Responses API 路径 (~line 366) 和 Chat Completions 路径 (~line 923)
+// 必须在 selectProvider() 之前修改 payload.model
+const VISION_FB = "mimo-v2.5";
+const NON_VISION = new Set(["mimo-v2.5-pro", "mimo-v2-pro", "mimo-v2-flash"]);
+if (NON_VISION.has(payload.model) && Array.isArray(payload.input)) {
+    // 遍历 payload.input 查找 input_image 类型
+    // 找到 → payload.model = VISION_FB
+}
+```
 
-The `model` field in each request determines the provider. Routing is per-request, configured via `src/providers/registry.ts` and overridable at runtime through the admin UI (DB overrides). Generic providers can be loaded from a `providers.json` file via `src/providers/genericLoader.ts`.
+关键点：必须改 `payload.model` 而不是 `chat.model`，因为 `selectProvider()` 返回的 `upstreamModel` 会在之后覆盖 `chat.model`。
 
-### Config resolution order
+## 当前状态
 
-Settings like `disableThinking` follow: CLI flag/env → admin DB setting → default. This lets the admin UI change behavior without restarting.
+- ✅ 视觉回退已跑通（运行在本地 mimo2codex v0.5.5 上，手动 patch）
+- ✅ 用户确认 "跑通了！"
+- ⬜ 需要 fork 上游仓库，应用补丁，发布为独立 npm 包 `mimo-multi`
+- ⬜ 需要配置 GitHub Actions 自动跟踪上游更新
 
-## TypeScript conventions
+## 关键文件路径
 
-- ESM (`"type": "module"` in package.json, `NodeNext` module resolution)
-- Strict mode with `noUnusedLocals`, `noUnusedParameters`, `strictNullChecks`
-- All imports use `.js` extension (NodeNext requirement)
-- Target: ES2022
+| 路径 | 说明 |
+|------|------|
+| `/Users/yufeng/.npm-global/lib/node_modules/mimo2codex/dist/server.js` | 当前已 patch 的运行版本 |
+| `/Users/yufeng/.npm-global/lib/node_modules/mimo2codex/dist/server.js.bak` | 原始备份 |
+| `/Users/yufeng/.npm-global/lib/node_modules/mimo2codex/dist/translate/reqToChat.js` | 冗余 patch（非必要） |
+| `/Users/yufeng/.npm-global/lib/node_modules/mimo2codex/dist/translate/reqToChat.js.bak` | 备份 |
+| `/Users/yufeng/.local/bin/start-codex-mimo` | 一键启动脚本（含 MiMo API key） |
+| `/Users/yufeng/.codex/config.toml` | Codex 配置，指向 :8788 |
+| `/Users/yufeng/.codex/auth.json` | Codex 认证 |
 
-## Testing
+## 上游仓库信息
 
-Tests live in `test/` and follow the naming pattern `<module-path>.test.ts` (dots replacing slashes, e.g. `providers.deepseek.test.ts`). Vitest with Node environment. Tests are self-contained — no external services needed.
+- **仓库**: https://github.com/7as0nch/mimo2codex
+- **作者**: 7as0nch
+- **许可证**: MIT
+- **当前版本**: v0.5.5
+- **Stars**: 403
+- **默认分支**: main
+- **发布频率**: 极高（几乎每天发版）
 
-## Hard rules from AGENTS.md
+## 上游跟踪策略
 
-- Never `pip install openai` or `import openai` — the user's keys are for MiMo/DeepSeek, not OpenAI.
-- Never assume image generation is available natively — use `mimoskill/` helpers.
-- For image input on non-vision models, use `mimoskill/scripts/ocr.py` instead of asking users to switch models.
-- MiMo quirks: use `max_completion_tokens` (not `max_tokens`); `image_url` content requires a `text` part in the same array; reasoning is `reasoning_content` (not `reasoning_summary`); `web_search` is a builtin tool type, not a function tool.
+四种情况自动处理：
+1. 上游修 bug → `git merge upstream/main`，无冲突自动发布
+2. 上游加新功能 → 自动 merge + 跑测试
+3. 上游改无关文件 → 零冲突自动 merge
+4. 上游改 server.ts 同一段 → 创建 Issue 通知人工介入（概率极低）
 
-## Change workflow rules
+通过 GitHub Actions 定时任务（每天一次）触发检测。
 
-Project-level rules for every change made in this repo.
+## 待办事项
 
-### 1. Never commit on the user's behalf
-
-Do **not** run `git commit`, `git push`, `git add` with intent to commit, `git tag`, or any release script (`npm run release:patch`, `release:minor`, `release:major`, `release:beta`). The user reviews the working tree and commits / publishes manually.
-
-Read-only git inspection (`git status`, `git diff`, `git log`) and branch creation (`git checkout -b`) are fine. End-of-task summaries should describe what changed and is ready for review, not "committed as <hash>".
-
-### 2. Log every non-trivial change in BOTH places
-
-A change worth a `[new]` / `[opt]` / `[fix]` / `[doc]` tag must land in **both** files. They complement each other — never update only one or they will drift:
-
-1. **`doc/tag-log.md` + `doc/tag-log.zh.md`** — developer-facing verbose changelog. Append under the current upcoming-version block, or create a new `## vX.Y.Z — YYYY-MM-DD` section at the top. Use the existing `[new]/[opt]/[fix]/[doc]` category tags. Bilingual files stay in lockstep.
-
-2. **`web/src/release-notes.tsx`** — user-facing in-app `What's new` modal. Add a `ReleaseHighlight` to the matching `ReleaseNote`, or prepend a new entry when bumping the version. Each highlight needs:
-   - bilingual `title` and `description` (`{ en, zh }`)
-   - a `kind` (`"new" | "improved" | "fixed" | "doc"`)
-   - optional `location` (bilingual) — *where* in the UI to find the new thing, the "教学" part of the modal
-   - optional `ctaLabel` + `ctaPath` (in-app route) or `ctaHref` (external link)
-
-After the user bumps the version with `npm run release:*`, restarting the proxy makes the new `What's new` modal pop on first admin load for everyone whose `localStorage.lastSeenReleaseVersion` is below the new version.
+1. 在 GitHub 创建 `mimo-multi` 仓库
+2. Fork mimo2codex，应用视觉回退补丁
+3. 修改 package.json（name, description, repository）
+4. 编写 README.md + README.zh.md
+5. 配置 sync-upstream GitHub Actions
+6. 发布到 npm
