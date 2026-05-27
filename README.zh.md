@@ -44,12 +44,63 @@ npm install -g mimo-multi
 
 ## 快速开始
 
+### 1. 获取 MiMo API Key
+
+前往 [MiMo 控制台](https://platform.xiaomimimo.com) → API Keys → 复制 key（`sk-` 或 `tp-` 开头）。
+
+### 2. 安装
+
 ```bash
-export MIMO_API_KEY=你的key
+npm install -g mimo-multi
+```
+
+需要 Node.js >= 18。
+
+### 3. 启动代理
+
+```bash
+export MIMO_API_KEY=你的MiMo密钥
 mimo-multi
 ```
 
-启动后按横幅提示配置 Codex 的 `auth.json` 和 `config.toml` 即可。
+启动成功后会打印两段配置内容，分别对应 Codex 的两个配置文件。
+
+### 4. 配置 Codex
+
+把启动横幅打印的内容写到对应文件：
+
+| 文件 | macOS / Linux 路径 |
+|------|--------------------|
+| auth.json | `~/.codex/auth.json` |
+| config.toml | `~/.codex/config.toml` |
+
+示例配置：
+
+**~/.codex/auth.json**
+```json
+{"OPENAI_API_KEY": "mimo-multi-local"}
+```
+
+**~/.codex/config.toml**
+```toml
+model = "mimo-v2.5-pro"
+model_provider = "mimo"
+
+[model_providers.mimo]
+name = "MiMo (via mimo-multi)"
+base_url = "http://127.0.0.1:8788/v1"
+wire_api = "responses"
+requires_openai_auth = true
+```
+
+### 5. 启动 Codex
+
+```bash
+codex
+# 或在桌面端应用中打开
+```
+
+之后发图片就会看到代理日志中的 `[visual-fallback]` 提示，无需任何手动操作。
 
 完整功能文档（多 provider、Docker、Admin UI、通用 provider、cc-switch 集成等）详见[上游 mimo2codex 文档](https://github.com/7as0nch/mimo2codex)。
 

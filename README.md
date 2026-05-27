@@ -45,12 +45,63 @@ Requires Node.js >= 18.
 
 ## Quick Start
 
+### 1. Get a MiMo API Key
+
+Go to [MiMo Console](https://platform.xiaomimimo.com) → API Keys → copy your key (`sk-` or `tp-` prefix).
+
+### 2. Install
+
 ```bash
-export MIMO_API_KEY=your-key
+npm install -g mimo-multi
+```
+
+Requires Node.js >= 18.
+
+### 3. Start the proxy
+
+```bash
+export MIMO_API_KEY=your-mimo-api-key
 mimo-multi
 ```
 
-Then configure Codex with the snippets printed in the startup banner.
+The startup banner prints two config snippets for Codex.
+
+### 4. Configure Codex
+
+Write the printed snippets to:
+
+| File | macOS / Linux path |
+|------|--------------------|
+| auth.json | `~/.codex/auth.json` |
+| config.toml | `~/.codex/config.toml` |
+
+Example:
+
+**~/.codex/auth.json**
+```json
+{"OPENAI_API_KEY": "mimo-multi-local"}
+```
+
+**~/.codex/config.toml**
+```toml
+model = "mimo-v2.5-pro"
+model_provider = "mimo"
+
+[model_providers.mimo]
+name = "MiMo (via mimo-multi)"
+base_url = "http://127.0.0.1:8788/v1"
+wire_api = "responses"
+requires_openai_auth = true
+```
+
+### 5. Run Codex
+
+```bash
+codex
+# or open the Codex desktop app
+```
+
+Send an image and watch the proxy logs for `[visual-fallback]` — no manual steps needed.
 
 For full documentation on all features (multi-provider, Docker, admin UI, generic providers, cc-switch integration, etc.), see the [upstream mimo2codex docs](https://github.com/7as0nch/mimo2codex).
 
