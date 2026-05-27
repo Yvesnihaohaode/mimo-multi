@@ -2,77 +2,79 @@
 
 ## 项目定位
 
-**mimo-multi** 是 [mimo2codex](https://github.com/7as0nch/mimo2codex)（MIT 许可证）的增强 fork，核心功能是**视觉回退**：自动检测请求中的图片，将不支持视觉的模型（pro/flash）无缝切换到支持视觉的模型（v2.5）。
+**mimo-multi** 是 [mimo2codex](https://github.com/7as0nch/mimo2codex)（MIT）的增强 fork。核心功能：**视觉回退**——自动检测请求中的图片，将非视觉模型（pro/flash）无缝切换到 `mimo-v2.5`。
+
+## 项目完成状态（2026-05-27）
+
+| 项 | 状态 |
+|------|------|
+| 视觉回退补丁（src/server.ts 两处） | ✅ 已提交 |
+| package.json 改名 | ✅ mimo-multi |
+| README.md + README.zh.md | ✅ 含完整使用指南 |
+| GitHub 仓库 | ✅ https://github.com/Yvesnihaohaode/mimo-multi |
+| npm 发布 | ✅ `npm install -g mimo-multi` |
+| 上游自动同步 CI | ✅ `.github/workflows/sync-upstream.yml` |
+| 本地已安装替换 | ✅ start-codex-mimo 使用 mimo-multi 命令 |
+| GitHub Secret NPM_TOKEN | ✅ 已配置 |
+
+## 凭证（私密记忆）
+
+GitHub Token、npm Token、git remote 等敏感信息存在记忆系统 `mimo-multi-credentials.md` 中，CLAUDE.md 里不写。
+
+## 日常操作
+
+### 本地开发
+```bash
+cd /Users/yufeng/Desktop/mimo-multi
+npm run build          # 编译
+npm test               # 跑测试（524个）
+npm install -g .       # 本地安装为全局命令
+```
+
+### 发布新版本
+```bash
+npm version patch      # 或 minor / major
+git push && npm publish
+```
+
+### 上游冲突处理
+用户收到 GitHub Issue 通知（`[upstream-conflict]` 标签）→ 贴链接给 Claude Code → AI 解决冲突 → 测试 → 发布。
+
+### 一键启动
+```bash
+start-codex-mimo       # 启动 mimo-multi + Codex
+```
 
 ## 架构
 
 ```
-Codex 桌面端 → :8788 (mimo-multi / mimo2codex 代理) → MiMo API
-                                    ↑
-                          视觉回退补丁在此生效
+Codex 桌面端 → :8788 (mimo-multi) → MiMo API
+                       ↑
+              [visual-fallback] 补丁在此
 ```
 
-## 核心改动
+## 核心改动（技术备忘）
 
-仅修改 `src/server.ts` 一处，在 `selectProvider()` 调用前插入检测逻辑：
+修改 `src/server.ts` 两处，在 `selectProvider()` 调用前插入检测逻辑：
 
-```typescript
-// 位置：server.ts - Responses API 路径 (~line 366) 和 Chat Completions 路径 (~line 923)
-// 必须在 selectProvider() 之前修改 payload.model
-const VISION_FB = "mimo-v2.5";
-const NON_VISION = new Set(["mimo-v2.5-pro", "mimo-v2-pro", "mimo-v2-flash"]);
-if (NON_VISION.has(payload.model) && Array.isArray(payload.input)) {
-    // 遍历 payload.input 查找 input_image 类型
-    // 找到 → payload.model = VISION_FB
-}
-```
+**Responses API 路径：** 检测 `payload.input[].content[]` 中 `type === "input_image"` 的 content part，过滤掉非 message 类型的 item（function_call 等没有 content 属性）。
 
-关键点：必须改 `payload.model` 而不是 `chat.model`，因为 `selectProvider()` 返回的 `upstreamModel` 会在之后覆盖 `chat.model`。
+**Chat Completions API 路径：** 检测 `payload.messages[].content[]` 中 `type === "image_url"` 或 `"input_image"` 的 content part。
 
-## 当前状态
+**关键点：** 只过滤 `item.type === "message"` 的项，避免 `ResponsesFunctionCallItem` 等无 content 属性的类型导致 TS 报错。
 
-- ✅ 视觉回退已跑通（运行在本地 mimo2codex v0.5.5 上，手动 patch）
-- ✅ 用户确认 "跑通了！"
-- ⬜ 需要 fork 上游仓库，应用补丁，发布为独立 npm 包 `mimo-multi`
-- ⬜ 需要配置 GitHub Actions 自动跟踪上游更新
+## CI/CD 自动流水线
 
-## 关键文件路径
+每天北京时间 16:07（`.github/workflows/sync-upstream.yml`）：
+1. 检测上游新提交 → 无则跳过
+2. 尝试 merge → 有冲突（server.ts）则建 Issue 通知
+3. npm install → build → test（524 个）
+4. 通过后自动 push + npm publish
 
-| 路径 | 说明 |
-|------|------|
-| `/Users/yufeng/.npm-global/lib/node_modules/mimo2codex/dist/server.js` | 当前已 patch 的运行版本 |
-| `/Users/yufeng/.npm-global/lib/node_modules/mimo2codex/dist/server.js.bak` | 原始备份 |
-| `/Users/yufeng/.npm-global/lib/node_modules/mimo2codex/dist/translate/reqToChat.js` | 冗余 patch（非必要） |
-| `/Users/yufeng/.npm-global/lib/node_modules/mimo2codex/dist/translate/reqToChat.js.bak` | 备份 |
-| `/Users/yufeng/.local/bin/start-codex-mimo` | 一键启动脚本（含 MiMo API key） |
-| `/Users/yufeng/.codex/config.toml` | Codex 配置，指向 :8788 |
-| `/Users/yufeng/.codex/auth.json` | Codex 认证 |
+## 相关资源
 
-## 上游仓库信息
-
-- **仓库**: https://github.com/7as0nch/mimo2codex
-- **作者**: 7as0nch
-- **许可证**: MIT
-- **当前版本**: v0.5.5
-- **Stars**: 403
-- **默认分支**: main
-- **发布频率**: 极高（几乎每天发版）
-
-## 上游跟踪策略
-
-四种情况自动处理：
-1. 上游修 bug → `git merge upstream/main`，无冲突自动发布
-2. 上游加新功能 → 自动 merge + 跑测试
-3. 上游改无关文件 → 零冲突自动 merge
-4. 上游改 server.ts 同一段 → 创建 Issue 通知人工介入（概率极低）
-
-通过 GitHub Actions 定时任务（每天一次）触发检测。
-
-## 待办事项
-
-1. 在 GitHub 创建 `mimo-multi` 仓库
-2. Fork mimo2codex，应用视觉回退补丁
-3. 修改 package.json（name, description, repository）
-4. 编写 README.md + README.zh.md
-5. 配置 sync-upstream GitHub Actions
-6. 发布到 npm
+- 上游仓库：https://github.com/7as0nch/mimo2codex
+- npm 包：https://www.npmjs.com/package/mimo-multi
+- 启动脚本：`/Users/yufeng/.local/bin/start-codex-mimo`
+- Codex 配置：`~/.codex/config.toml` + `~/.codex/auth.json`
+- 记忆：`mimo-multi-credentials.md`（GitHub Token, npm Token, git 配置）
