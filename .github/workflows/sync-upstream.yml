@@ -1,17 +1,15 @@
 name: Sync Upstream
 
 # Daily check for new upstream (mimo2codex) releases.
-# Automatically merges upstream changes when there's no conflict
-# with our visual-fallback patches.
+# Automatically merges, builds, tests, and publishes.
 
 on:
   schedule:
-    # Every day at 08:00 UTC (16:00 Beijing)
-    - cron: '0 8 * * *'
+    - cron: '7 8 * * *'  # Every day at 08:07 UTC (16:07 Beijing)
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run (no auto-merge)'
+        description: 'Dry run (no auto-merge, no publish)'
         type: boolean
         default: false
 
@@ -27,6 +25,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+
       - name: Add upstream remote
         run: |
           git remote add upstream https://github.com/7as0nch/mimo2codex.git
@@ -37,7 +41,6 @@ jobs:
         run: |
           echo "current=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
           echo "upstream=$(git rev-parse upstream/main)" >> $GITHUB_OUTPUT
-          echo "current_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo 'none')" >> $GITHUB_OUTPUT
 
       - name: Check if upstream has new commits
         id: check
@@ -60,7 +63,6 @@ jobs:
           else
             echo "Merge has conflicts."
             echo "conflict=true" >> $GITHUB_OUTPUT
-            # Abort the failed merge
             git merge --abort 2>/dev/null || true
           fi
 
@@ -78,13 +80,27 @@ jobs:
           fi
           echo "files=$CONFLICT_FILES" >> $GITHUB_OUTPUT
 
+      - name: Install & Build & Test
+        if: steps.merge.outputs.conflict == 'false' && steps.check.outputs.has_updates == 'true'
+        run: |
+          npm install
+          npm run build
+          npm test
+
       - name: Commit and push merge
         if: steps.merge.outputs.conflict == 'false' && steps.check.outputs.has_updates == 'true' && inputs.dry_run != true
         run: |
           git commit -m "chore: sync upstream $(git rev-parse --short upstream/main)
 
-          Auto-merged from mimo2codex upstream. No conflicts detected."
+          Auto-merged from mimo2codex upstream. All tests passed."
           git push origin main
+
+      - name: Publish to npm
+        if: steps.merge.outputs.conflict == 'false' && steps.check.outputs.has_updates == 'true' && inputs.dry_run != true
+        run: |
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create issue on critical conflict
         if: steps.conflict_check.outputs.critical == 'true' && inputs.dry_run != true
@@ -133,3 +149,8 @@ jobs:
           echo "- Upstream: ${{ steps.versions.outputs.upstream }}" >> $GITHUB_STEP_SUMMARY
           echo "- Has updates: ${{ steps.check.outputs.has_updates }}" >> $GITHUB_STEP_SUMMARY
           echo "- Conflict: ${{ steps.merge.outputs.conflict || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.merge.outputs.conflict }}" = "false" ]; then
+            echo "- Status: ✅ Merged, tested, published" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.conflict_check.outputs.critical }}" = "true" ]; then
+            echo "- Status: 🚨 Manual fix needed (server.ts conflict)" >> $GITHUB_STEP_SUMMARY
+          fi
