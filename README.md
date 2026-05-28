@@ -148,6 +148,46 @@ Send an image and watch the proxy logs for `[visual-fallback]` — no manual ste
 
 For full documentation on all features (multi-provider, Docker, admin UI, generic providers, cc-switch integration, etc.), see the [upstream mimo2codex docs](https://github.com/7as0nch/mimo2codex).
 
+## Usage
+
+**Important:** Start mimo-multi **before** opening Codex. After a reboot, mimo-multi is not running yet — opening Codex first will fail because nothing is listening on `:8788`.
+
+### Option 1: Manual (two steps)
+
+```bash
+# Step 1 — start the proxy
+export MIMO_API_KEY=your-mimo-api-key
+mimo-multi --port 8788 &
+
+# Step 2 — open Codex (desktop app or `codex` in terminal)
+```
+
+### Option 2: One-command aliases (recommended)
+
+Add these to your `~/.zshrc` (or `~/.bashrc`). First set your API keys as env vars:
+
+```bash
+export MIMO_API_KEY=your-mimo-api-key
+export DS_API_KEY=your-deepseek-api-key
+```
+
+Then add the aliases:
+
+```bash
+alias codex-mimo='curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }; sed -i "" "s/^model = .*/model = \"mimo-v2.5-pro\"/" ~/.codex/config.toml; pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app; echo "→ mimo-v2.5-pro"'
+
+alias codex-ds='curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }; sed -i "" "s/^model = .*/model = \"deepseek-v4-pro\"/" ~/.codex/config.toml; pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app; echo "→ deepseek-v4-pro"'
+```
+
+Now a single command does everything:
+
+```bash
+codex-mimo    # auto-starts proxy → switches to mimo-v2.5-pro → opens Codex
+codex-ds      # auto-starts proxy → switches to deepseek-v4-pro → opens Codex
+```
+
+Each alias handles three things: **(1)** start mimo-multi if it's not running, **(2)** switch the model in `config.toml`, **(3)** restart Codex. After a reboot, just type `codex-mimo` or `codex-ds` and you're ready.
+
 ## Difference from upstream mimo2codex
 
 | | mimo2codex | mimo-multi |

@@ -147,6 +147,46 @@ codex
 
 完整功能文档（多 provider、Docker、Admin UI、通用 provider、cc-switch 集成等）详见[上游 mimo2codex 文档](https://github.com/7as0nch/mimo2codex)。
 
+## 使用方式
+
+**重要：** 必须先启动 mimo-multi，再打开 Codex。电脑重启后 mimo-multi 不会自动运行——如果直接点开 Codex，它会往 `localhost:8788` 发请求但连不上。
+
+### 方式一：手动启动（两步）
+
+```bash
+# 第一步 — 启动代理
+export MIMO_API_KEY=你的MiMo密钥
+mimo-multi --port 8788 &
+
+# 第二步 — 打开 Codex（桌面 App 或终端输入 codex）
+```
+
+### 方式二：一键别名（推荐）
+
+在 `~/.zshrc`（或 `~/.bashrc`）中添加以下内容。先设置 API 密钥环境变量：
+
+```bash
+export MIMO_API_KEY=你的MiMo密钥
+export DS_API_KEY=你的DeepSeek密钥
+```
+
+然后添加别名：
+
+```bash
+alias codex-mimo='curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }; sed -i "" "s/^model = .*/model = \"mimo-v2.5-pro\"/" ~/.codex/config.toml; pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app; echo "→ mimo-v2.5-pro"'
+
+alias codex-ds='curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }; sed -i "" "s/^model = .*/model = \"deepseek-v4-pro\"/" ~/.codex/config.toml; pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app; echo "→ deepseek-v4-pro"'
+```
+
+之后一条命令搞定一切：
+
+```bash
+codex-mimo    # 自动启动代理 → 切到 mimo-v2.5-pro → 打开 Codex
+codex-ds      # 自动启动代理 → 切到 deepseek-v4-pro → 打开 Codex
+```
+
+每个别名自动做三件事：**(1)** 如果 mimo-multi 没在运行就启动它，**(2)** 切换 `config.toml` 中的模型名，**(3)** 重启 Codex。电脑重启后，只需输入 `codex-mimo` 或 `codex-ds` 就能直接开始用。
+
 ## 与上游 mimo2codex 的区别
 
 | | mimo2codex | mimo-multi |
