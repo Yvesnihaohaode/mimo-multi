@@ -151,7 +151,9 @@ codex
 
 **重要：** 必须先启动 mimo-multi，再打开 Codex。电脑重启后 mimo-multi 不会自动运行——如果直接点开 Codex，它会往 `localhost:8788` 发请求但连不上。
 
-### 方式一：手动启动（两步）
+### 方式一：手动启动（安装完即可用，无需额外配置）
+
+每次启动两步：
 
 ```bash
 # 第一步 — 启动代理
@@ -163,7 +165,9 @@ mimo-multi --port 8788 &
 
 ### 方式二：一键启动 + 切换模型（推荐）
 
-在 `~/.zshrc`（或 `~/.bashrc`）中添加以下内容。先设置 API 密钥环境变量：
+**一次性配置** — 安装 mimo-multi 后，把以下内容加到 `~/.zshrc`（或 `~/.bashrc`）。只需配一次。
+
+先设置 API 密钥环境变量：
 
 ```bash
 export MIMO_API_KEY=你的MiMo密钥
@@ -188,7 +192,9 @@ codex-ds() {
 }
 ```
 
-之后一条命令搞定一切：
+执行 `source ~/.zshrc` 让配置生效。
+
+**以后每次** — 一条命令搞定一切：
 
 ```bash
 codex-mimo    # 启动代理 + 切到 mimo-v2.5-pro + 打开 Codex

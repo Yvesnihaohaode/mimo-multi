@@ -152,7 +152,9 @@ For full documentation on all features (multi-provider, Docker, admin UI, generi
 
 **Important:** Start mimo-multi **before** opening Codex. After a reboot, mimo-multi is not running yet — opening Codex first will fail because nothing is listening on `:8788`.
 
-### Option 1: Manual (two steps)
+### Option 1: Manual (works immediately after install)
+
+No extra setup needed. Two steps every time:
 
 ```bash
 # Step 1 — start the proxy
@@ -164,7 +166,9 @@ mimo-multi --port 8788 &
 
 ### Option 2: One-command start + model switch (recommended)
 
-Add these two commands to your `~/.zshrc` (or `~/.bashrc`). First set your API keys as env vars:
+**One-time setup** — after installing mimo-multi, add the following to your `~/.zshrc` (or `~/.bashrc`). You only do this once.
+
+First, set your API keys as env vars:
 
 ```bash
 export MIMO_API_KEY=your-mimo-api-key
@@ -189,14 +193,16 @@ codex-ds() {
 }
 ```
 
-Now a single command starts everything:
+Reload your shell (`source ~/.zshrc`) and you're set.
+
+**Every time after** — a single command does everything:
 
 ```bash
 codex-mimo    # 启动代理 + 切到 mimo-v2.5-pro + 打开 Codex
 codex-ds      # 启动代理 + 切到 deepseek-v4-pro + 打开 Codex
 ```
 
-Each command does three things: **(1)** start mimo-multi if not running, **(2)** switch the model in `config.toml`, **(3)** restart Codex. After a reboot, just type `codex-mimo` or `codex-ds` and you're ready.
+Each command: **(1)** start mimo-multi if not running, **(2)** switch model in `config.toml`, **(3)** restart Codex. After a reboot, just type `codex-mimo` or `codex-ds`.
 
 ## Difference from upstream mimo2codex
 
