@@ -45,7 +45,10 @@
     "s2": "把 mimo2codex.app 拖到「应用程序」（/Applications）文件夹。",
     "s3": "打开终端（Terminal），把下面这行粘进去回车跑一次：",
     "s3Hint": "（这一步清除浏览器下载留下的 quarantine 标记，不跑直接双击就会报「已损坏」。命令没任何输出是正常的。）",
-    "s4": "回到「应用程序」双击 mimo2codex.app 启动。之后从顶栏的 m2 图标进设置面板。"
+    "s4": "回到「应用程序」双击 mimo2codex.app 启动。之后从顶栏的 m2 图标进设置面板。",
+    "inlineWarn": "macOS 必看：桌面包未签名，下载后双击直接打开会提示「已损坏」。需要按下方步骤跑一条 xattr 命令解隔离。",
+    "inlineCmd": "xattr -cr /Applications/mimo2codex.app",
+    "inlineSeeBelow": "查看完整 4 步 ↓"
   },
   "security": {
     "title": "首次打开会有系统安全警告",
