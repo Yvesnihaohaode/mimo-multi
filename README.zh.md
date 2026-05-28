@@ -170,22 +170,32 @@ export MIMO_API_KEY=你的MiMo密钥
 export DS_API_KEY=你的DeepSeek密钥
 ```
 
-然后添加别名：
+然后添加启动命令：
 
 ```bash
-alias codex-mimo='curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }; sed -i "" "s/^model = .*/model = \"mimo-v2.5-pro\"/" ~/.codex/config.toml; pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app; echo "→ mimo-v2.5-pro"'
+codex-mimo() {
+  curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }
+  sed -i "" "s/^model = .*/model = \"mimo-v2.5-pro\"/" ~/.codex/config.toml
+  pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app
+  echo "→ mimo-v2.5-pro"
+}
 
-alias codex-ds='curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }; sed -i "" "s/^model = .*/model = \"deepseek-v4-pro\"/" ~/.codex/config.toml; pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app; echo "→ deepseek-v4-pro"'
+codex-ds() {
+  curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }
+  sed -i "" "s/^model = .*/model = \"deepseek-v4-pro\"/" ~/.codex/config.toml
+  pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app
+  echo "→ deepseek-v4-pro"
+}
 ```
 
 之后一条命令搞定一切：
 
 ```bash
-codex-mimo    # 自动启动代理 → 切到 mimo-v2.5-pro → 打开 Codex
-codex-ds      # 自动启动代理 → 切到 deepseek-v4-pro → 打开 Codex
+codex-mimo    # 启动代理 + 切到 mimo-v2.5-pro + 打开 Codex
+codex-ds      # 启动代理 + 切到 deepseek-v4-pro + 打开 Codex
 ```
 
-每个别名自动做三件事：**(1)** 如果 mimo-multi 没在运行就启动它，**(2)** 切换 `config.toml` 中的模型名，**(3)** 重启 Codex。电脑重启后，只需输入 `codex-mimo` 或 `codex-ds` 就能直接开始用。
+每条命令自动做三件事：**(1)** 如果 mimo-multi 没在运行就启动它，**(2)** 切换 `config.toml` 中的模型名，**(3)** 重启 Codex。电脑重启后，只需输入 `codex-mimo` 或 `codex-ds` 就能直接开始用。
 
 ## 与上游 mimo2codex 的区别
 

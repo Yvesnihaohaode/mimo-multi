@@ -164,29 +164,39 @@ mimo-multi --port 8788 &
 
 ### Option 2: One-command start + model switch (recommended)
 
-Add these to your `~/.zshrc` (or `~/.bashrc`). First set your API keys as env vars:
+Add these two commands to your `~/.zshrc` (or `~/.bashrc`). First set your API keys as env vars:
 
 ```bash
 export MIMO_API_KEY=your-mimo-api-key
 export DS_API_KEY=your-deepseek-api-key
 ```
 
-Then add the aliases:
+Then add the startup commands:
 
 ```bash
-alias codex-mimo='curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }; sed -i "" "s/^model = .*/model = \"mimo-v2.5-pro\"/" ~/.codex/config.toml; pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app; echo "→ mimo-v2.5-pro"'
+codex-mimo() {
+  curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }
+  sed -i "" "s/^model = .*/model = \"mimo-v2.5-pro\"/" ~/.codex/config.toml
+  pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app
+  echo "→ mimo-v2.5-pro"
+}
 
-alias codex-ds='curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }; sed -i "" "s/^model = .*/model = \"deepseek-v4-pro\"/" ~/.codex/config.toml; pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app; echo "→ deepseek-v4-pro"'
+codex-ds() {
+  curl -s http://127.0.0.1:8788/admin/ > /dev/null 2>&1 || { MIMO_API_KEY=$MIMO_API_KEY DS_API_KEY=$DS_API_KEY mimo-multi --port 8788 & sleep 3; }
+  sed -i "" "s/^model = .*/model = \"deepseek-v4-pro\"/" ~/.codex/config.toml
+  pkill -x Codex 2>/dev/null; sleep 1; open /Applications/Codex.app
+  echo "→ deepseek-v4-pro"
+}
 ```
 
-Now a single command does everything:
+Now a single command starts everything:
 
 ```bash
-codex-mimo    # auto-starts proxy → switches to mimo-v2.5-pro → opens Codex
-codex-ds      # auto-starts proxy → switches to deepseek-v4-pro → opens Codex
+codex-mimo    # 启动代理 + 切到 mimo-v2.5-pro + 打开 Codex
+codex-ds      # 启动代理 + 切到 deepseek-v4-pro + 打开 Codex
 ```
 
-Each alias handles three things: **(1)** start mimo-multi if it's not running, **(2)** switch the model in `config.toml`, **(3)** restart Codex. After a reboot, just type `codex-mimo` or `codex-ds` and you're ready.
+Each command does three things: **(1)** start mimo-multi if not running, **(2)** switch the model in `config.toml`, **(3)** restart Codex. After a reboot, just type `codex-mimo` or `codex-ds` and you're ready.
 
 ## Difference from upstream mimo2codex
 
