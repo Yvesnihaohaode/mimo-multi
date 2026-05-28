@@ -162,7 +162,7 @@ mimo-multi --port 8788 &
 # Step 2 — open Codex (desktop app or `codex` in terminal)
 ```
 
-### Option 2: One-command aliases (recommended)
+### Option 2: One-command start + model switch (recommended)
 
 Add these to your `~/.zshrc` (or `~/.bashrc`). First set your API keys as env vars:
 
