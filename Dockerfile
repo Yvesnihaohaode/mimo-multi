@@ -5,7 +5,7 @@
 # （exit 132）。better-sqlite3 是 native module，通过 npm_config_target_*
 # 引导 prebuild-install 拉对应目标 arch 的预编译 .node 文件，所以构建过程
 # 完全不依赖 QEMU 模拟。
-FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 ARG TARGETARCH
 
 WORKDIR /app

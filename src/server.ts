@@ -8,7 +8,7 @@ import {
   callResponsesPassthrough,
   UpstreamError,
 } from "./upstream/openaiCompatClient.js";
-import { BUILTIN_PROVIDERS, PROVIDER_LIST, PROVIDERS } from "./providers/registry.js";
+import { BUILTIN_PROVIDERS, byClientModel, PROVIDER_LIST, PROVIDERS } from "./providers/registry.js";
 import type { Provider, ProviderModel, ProviderRuntime } from "./providers/types.js";
 import { makeServerResponseSink } from "./util/sse.js";
 import { log } from "./util/log.js";
@@ -372,6 +372,43 @@ function buildNamespaceMap(payload: ResponsesRequest): Map<string, string> | und
   return map.size > 0 ? map : undefined;
 }
 
+/**
+ * Find a vision-capable model to fall back to when the current model doesn't
+ * support images but the request contains them. Tries same-provider first,
+ * then cross-provider (any configured provider with a vision model).
+ * Returns null when no fallback is available — the request proceeds unchanged
+ * and the upstream will surface the appropriate error.
+ */
+function findVisionModel(cfg: Config, clientModel: string): string | null {
+  const provider = byClientModel(clientModel);
+  if (!provider) return null;
+
+  const modelInfo = provider.resolveModel(clientModel);
+  if (!modelInfo) return null;
+
+  // Already vision-capable — no fallback needed
+  if (modelInfo.supportsImages) return null;
+
+  // Same-provider first
+  const sameProviderVision = provider.builtinModels.find(
+    (m) => m.supportsImages && !m.deprecatedAfter
+  );
+  if (sameProviderVision && cfg.providers[provider.id]) {
+    return sameProviderVision.id;
+  }
+
+  // Cross-provider: any configured provider with a vision model
+  for (const p of PROVIDER_LIST) {
+    if (!cfg.providers[p.id]) continue;
+    const visionModel = p.builtinModels.find(
+      (m) => m.supportsImages && !m.deprecatedAfter
+    );
+    if (visionModel) return visionModel.id;
+  }
+
+  return null;
+}
+
 async function handleResponses(
   cfg: Config,
   req: IncomingMessage,
@@ -419,10 +456,9 @@ async function handleResponses(
   }
 
   // ---------- visual fallback (mimo-multi) ----------
-  const VISION_FB = "mimo-v2.5";
-  const NON_VISION = new Set(["mimo-v2.5-pro", "mimo-v2-pro", "mimo-v2-flash"]);
+  const VISION_FB = findVisionModel(cfg, payload.model);
   let _hasImg = false;
-  if (NON_VISION.has(payload.model) && Array.isArray(payload.input)) {
+  if (VISION_FB && Array.isArray(payload.input)) {
     for (const item of payload.input) {
       // Only message items have content; function_call / reasoning items don't
       if (item.type !== "message") continue;
@@ -1074,10 +1110,9 @@ async function handleChatPassthrough(
   }
 
   // ---------- visual fallback (mimo-multi) ----------
-  const VISION_FB_CC = "mimo-v2.5";
-  const NON_VISION_CC = new Set(["mimo-v2.5-pro", "mimo-v2-pro", "mimo-v2-flash"]);
+  const VISION_FB_CC = findVisionModel(cfg, payload.model);
   let _hasImgCC = false;
-  if (NON_VISION_CC.has(payload.model) && Array.isArray(payload.messages)) {
+  if (VISION_FB_CC && Array.isArray(payload.messages)) {
     for (const msg of payload.messages) {
       const content = (msg as unknown as Record<string, unknown>).content;
       if (!Array.isArray(content)) continue;

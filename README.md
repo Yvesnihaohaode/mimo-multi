@@ -10,26 +10,29 @@
   <img alt="node" src="https://img.shields.io/badge/Node-18%2B-blue?style=flat-square&logo=node.js&logoColor=white">
   <img alt="wire_api" src="https://img.shields.io/badge/wire__api-responses-black?style=flat-square">
   <img alt="visual-fallback" src="https://img.shields.io/badge/visual--fallback-auto-orange?style=flat-square">
+  <img alt="docker" src="https://img.shields.io/badge/docker-supported-blue?style=flat-square&logo=docker&logoColor=white">
 </p>
 
 **Enhanced fork of [mimo2codex](https://github.com/7as0nch/mimo2codex) with automatic visual fallback.**
 
-When you send an image to a non-vision MiMo model (`mimo-v2.5-pro`, `mimo-v2-pro`, `mimo-v2-flash`), mimo-multi automatically detects it and seamlessly switches to `mimo-v2.5` — no manual model switching, no error messages, no restart.
+When you send an image to a non-vision model (e.g., `mimo-v2.5-pro`, `deepseek-v4-pro`), mimo-multi automatically detects it and seamlessly switches to a vision-capable model — no manual model switching, no error messages, no restart.
 
 > Based on mimo2codex v0.5.5 by [7as0nch](https://github.com/7as0nch). All credit for the core proxy goes to the original author. This fork adds one killer feature: **visual fallback**.
 
 ## Visual Fallback
 
-The problem: MiMo's best models (`mimo-v2.5-pro`, `mimo-v2-flash`) don't support image input. Send them a photo and you get a `404: No endpoints found that support image input` error. The workaround was to manually switch `config.toml` to `mimo-v2.5` every time you needed vision — annoying and breaks your flow.
+The problem: many powerful models (`mimo-v2.5-pro`, `deepseek-v4-pro`, `mimo-v2-flash`) don't support image input. Send them a photo and you get a `404: No endpoints found that support image input` error. The workaround was to manually switch models every time you needed vision — annoying and breaks your flow.
 
 mimo-multi fixes this transparently:
 
 ```
-Codex sends image → mimo-multi detects it → auto-switches to mimo-v2.5 → response comes back
+Codex sends image → mimo-multi detects it → checks model capability → auto-switches to vision model
                           ↑
-                   [visual-fallback] mimo-v2.5-pro → mimo-v2.5 (image detected)
+                   [visual-fallback] deepseek-v4-pro → mimo-v2.5 (image detected)
 ```
 
+- **Capability-based routing**: reads each model's `supportsImages` flag instead of hardcoded lists
+- **Same-provider first**: MiMo pro/flash → `mimo-v2.5`; falls back cross-provider when needed
 - **Responses API**: detects `input_image` type in `payload.input[].content[]`
 - **Chat Completions API**: detects `image_url` type in `payload.messages[].content[]`
 - **Zero config**: works out of the box, no flags, no settings
@@ -37,11 +40,27 @@ Codex sends image → mimo-multi detects it → auto-switches to mimo-v2.5 → r
 
 ## Install
 
+### npm (global)
+
 ```bash
 npm install -g mimo-multi
 ```
 
 Requires Node.js >= 18.
+
+### Docker (one-command)
+
+```bash
+# Clone and start
+git clone https://github.com/Yvesnihaohaode/mimo-multi.git
+cd mimo-multi
+cp .env.example .env   # edit .env with your API keys
+docker compose up -d
+```
+
+The admin UI is available at `http://localhost:8788/admin`. Data persists in `./.mimo-multi/`.
+
+Pre-built images coming soon to GitHub Container Registry.
 
 ## Quick Start
 
