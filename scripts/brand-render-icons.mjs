@@ -62,23 +62,31 @@ execSync(`npx --yes sharp-cli@4 -i .tmp-tray-mono.svg -o package/mac/tray-Templa
 const contribTrayIcoBuf = readFileSync(resolve(root, "package/brand/contributed-by-starlsd93/Mimo_Orange_64.ico"));
 writeFileSync(resolve(root, "package/win/tray.ico"), contribTrayIcoBuf);
 
-// ── Win icon.ico (app icon) ────────────────────────────────────────────────
-// We just COPY the contributor's largest 512x512 .ico (BMP-encoded inside,
-// guaranteed Windows-compatible — pre-tested, ships with the source).
-// Windows downsamples 512→16/32/48/64/128 internally with no quality loss
-// because we always feed it a source that's >= the requested display size.
+// ── Win icons: dual-file strategy ──────────────────────────────────────────
+// We ship TWO different .ico files because NSIS and rcedit have very
+// different size tolerances:
 //
-// Why not hand-assemble a multi-size ICO (16/32/48/64/128/256/512)?
-//   • `png-to-ico@2` is hardcoded to output [16,32,48,256] — drops 64/128/512
-//     no matter what input you give it (verified empirically).
-//   • Hand-assembling with PNG-encoded entries works in Explorer but trips
-//     up System.Drawing.Icon and a few older shell extensions — making the
-//     icon unreliable in obscure code paths (Properties dialog, Open With…).
-//   • BMP-encoded multi-size ICO would need a PNG→BMP DIB encoder we don't
-//     have available. The contributor's single-entry BMP 512 is the
-//     simplest format that works everywhere.
-const contribIcoBuf = readFileSync(resolve(root, "package/brand/contributed-by-starlsd93/Mimo_Orange_512.ico"));
-writeFileSync(resolve(root, "package/win/icon.ico"), contribIcoBuf);
+//   package/win/icon.ico            (512 native, 1.08 MB) — used as
+//     `win.icon` in electron-builder.yml. electron-builder feeds this to
+//     `rcedit` which rewrites the LAUNCHED app's .exe icon resource.
+//     rcedit handles large icons fine. Result: installed app's icon
+//     (Explorer preview pane, taskbar at HiDPI, title bar, jump list)
+//     downsamples from a 512 native source — crisp at any display scale.
+//
+//   package/win/installer-icon.ico  (256 native, 270 KB) — used as
+//     `nsis.installerIcon` / `nsis.installerHeaderIcon` / `nsis.uninstallerIcon`.
+//     NSIS makensis chokes on icons > ~500 KB inside its resource section
+//     (assistedInstaller.nsh expansion fails at installer compile). The
+//     256 entry is within NSIS's safe range and matches the v0.5.6 working
+//     build's icon size. Visible only during install/uninstall flow.
+//
+// Both files are direct copies of the contributor's BMP-encoded .icos —
+// no re-encoding, max compatibility.
+const contribAppIcoBuf = readFileSync(resolve(root, "package/brand/contributed-by-starlsd93/Mimo_Orange_512.ico"));
+writeFileSync(resolve(root, "package/win/icon.ico"), contribAppIcoBuf);
+
+const contribInstallerIcoBuf = readFileSync(resolve(root, "package/brand/contributed-by-starlsd93/Mimo_Orange_256.ico"));
+writeFileSync(resolve(root, "package/win/installer-icon.ico"), contribInstallerIcoBuf);
 
 // Cleanup temp files. Only .tmp-tray-mono.svg is still actively used (for
 // the Mac template image). The .tmp-tray-*.png / .tmp-app-*.png entries

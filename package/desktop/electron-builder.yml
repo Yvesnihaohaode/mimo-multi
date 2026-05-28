@@ -29,6 +29,10 @@ extraResources:
     to: "sidecar"
   - from: "../win"
     to: "branding-win"
+    # Bundle BOTH icon files into resources/branding-win/ — runtime code in
+    # package/desktop/src/icons.ts loads `icon.ico` (the 512 BMP) for the
+    # app window icon / tray fallback. `installer-icon.ico` is referenced
+    # by nsis.* below but isn't read at runtime.
     filter: ["icon.ico", "tray.ico"]
   - from: "../mac"
     to: "branding-mac"
@@ -71,9 +75,15 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: mimo2codex
-  installerIcon: "../win/icon.ico"
-  uninstallerIcon: "../win/icon.ico"
-  installerHeaderIcon: "../win/icon.ico"
+  # Use the smaller 256x256 icon for NSIS resources. The 512 .ico (used as
+  # `win.icon` for the launched app via rcedit) crashes makensis during
+  # `assistedInstaller.nsh` expansion — likely an NSIS-internal resource
+  # size limit. installer/uninstaller/header icons are only visible during
+  # the install flow, so 256 → downsampled is acceptable for that brief UX.
+  # See scripts/brand-render-icons.mjs for the dual-icon explanation.
+  installerIcon: "../win/installer-icon.ico"
+  uninstallerIcon: "../win/installer-icon.ico"
+  installerHeaderIcon: "../win/installer-icon.ico"
   # Default OFF — most users want to preserve their config across reinstalls.
   deleteAppDataOnUninstall: false
   artifactName: "mimo2codex-desktop-${version}-win-${arch}.${ext}"
