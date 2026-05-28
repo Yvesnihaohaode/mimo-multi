@@ -203,6 +203,61 @@ codex-ds      # 启动代理 + 切到 deepseek-v4-pro + 打开 Codex
 
 每条命令自动做三件事：**(1)** 如果 mimo-multi 没在运行就启动它，**(2)** 切换 `config.toml` 中的模型名，**(3)** 重启 Codex。电脑重启后，只需输入 `codex-mimo` 或 `codex-ds` 就能直接开始用。
 
+## Windows
+
+三种安装方式均支持 Windows，`mimo-multi` 命令原生运行，无需 WSL。
+
+### 安装
+
+| 方式 | 步骤 |
+|---|---|
+| Docker | 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)，执行与上文相同的 [`docker run`](#docker一键使用) 命令 |
+| `npx mimo-multi setup` | 安装 [Node.js](https://nodejs.org/)（>= 18，含 npm/npx），在 PowerShell 中运行 `npx mimo-multi setup` |
+| `npm install -g` | 安装 Node.js，在 PowerShell 中运行 `npm install -g mimo-multi` |
+
+### 一键启动 + 切换模型（PowerShell）
+
+**一次性配置** — 打开 PowerShell，编辑配置文件（`notepad $PROFILE`），添加以下内容：
+
+```powershell
+# API 密钥（替换为你的真实密钥）
+$env:MIMO_API_KEY = "你的MiMo密钥"
+$env:DS_API_KEY = "你的DeepSeek密钥"
+
+function codex-mimo {
+  try { Invoke-WebRequest -Uri http://127.0.0.1:8788/admin/ -UseBasicParsing -TimeoutSec 2 | Out-Null } catch {
+    Start-Process mimo-multi -ArgumentList "--port 8788" -NoNewWindow
+    Start-Sleep 3
+  }
+  (Get-Content "$env:USERPROFILE\.codex\config.toml") -replace '^model = .*', 'model = "mimo-v2.5-pro"' | Set-Content "$env:USERPROFILE\.codex\config.toml"
+  Stop-Process -Name "Codex" -Force -ErrorAction SilentlyContinue
+  Start-Sleep 1
+  Start-Process "Codex.exe"
+  Write-Host "→ mimo-v2.5-pro"
+}
+
+function codex-ds {
+  try { Invoke-WebRequest -Uri http://127.0.0.1:8788/admin/ -UseBasicParsing -TimeoutSec 2 | Out-Null } catch {
+    Start-Process mimo-multi -ArgumentList "--port 8788" -NoNewWindow
+    Start-Sleep 3
+  }
+  (Get-Content "$env:USERPROFILE\.codex\config.toml") -replace '^model = .*', 'model = "deepseek-v4-pro"' | Set-Content "$env:USERPROFILE\.codex\config.toml"
+  Stop-Process -Name "Codex" -Force -ErrorAction SilentlyContinue
+  Start-Sleep 1
+  Start-Process "Codex.exe"
+  Write-Host "→ deepseek-v4-pro"
+}
+```
+
+重启 PowerShell（或执行 `. $PROFILE`）后即可使用：
+
+```powershell
+codex-mimo    # 启动代理 + 切到 mimo-v2.5-pro + 打开 Codex
+codex-ds      # 启动代理 + 切到 deepseek-v4-pro + 打开 Codex
+```
+
+> **提示：** 如果 Codex 安装在非默认路径，请将 `"Codex.exe"` 替换为完整路径。
+
 ## 与上游 mimo2codex 的区别
 
 | | mimo2codex | mimo-multi |

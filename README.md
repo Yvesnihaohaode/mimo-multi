@@ -204,6 +204,61 @@ codex-ds      # 启动代理 + 切到 deepseek-v4-pro + 打开 Codex
 
 Each command: **(1)** start mimo-multi if not running, **(2)** switch model in `config.toml`, **(3)** restart Codex. After a reboot, just type `codex-mimo` or `codex-ds`.
 
+## Windows
+
+All three install methods work on Windows. The `mimo-multi` command runs natively — no WSL required.
+
+### Install
+
+| Method | How |
+|---|---|
+| Docker | Install [Docker Desktop](https://www.docker.com/products/docker-desktop/), then run the same [`docker run`](#docker-one-click) command |
+| `npx mimo-multi setup` | Install [Node.js](https://nodejs.org/) (>= 18, includes npm/npx), then run `npx mimo-multi setup` in PowerShell |
+| `npm install -g` | Install Node.js, then `npm install -g mimo-multi` in PowerShell |
+
+### One-command start + model switch (PowerShell)
+
+**One-time setup** — open PowerShell and edit your profile (`notepad $PROFILE`), then add:
+
+```powershell
+# API keys (use your real keys)
+$env:MIMO_API_KEY = "your-mimo-api-key"
+$env:DS_API_KEY = "your-deepseek-api-key"
+
+function codex-mimo {
+  try { Invoke-WebRequest -Uri http://127.0.0.1:8788/admin/ -UseBasicParsing -TimeoutSec 2 | Out-Null } catch {
+    Start-Process mimo-multi -ArgumentList "--port 8788" -NoNewWindow
+    Start-Sleep 3
+  }
+  (Get-Content "$env:USERPROFILE\.codex\config.toml") -replace '^model = .*', 'model = "mimo-v2.5-pro"' | Set-Content "$env:USERPROFILE\.codex\config.toml"
+  Stop-Process -Name "Codex" -Force -ErrorAction SilentlyContinue
+  Start-Sleep 1
+  Start-Process "Codex.exe"
+  Write-Host "→ mimo-v2.5-pro"
+}
+
+function codex-ds {
+  try { Invoke-WebRequest -Uri http://127.0.0.1:8788/admin/ -UseBasicParsing -TimeoutSec 2 | Out-Null } catch {
+    Start-Process mimo-multi -ArgumentList "--port 8788" -NoNewWindow
+    Start-Sleep 3
+  }
+  (Get-Content "$env:USERPROFILE\.codex\config.toml") -replace '^model = .*', 'model = "deepseek-v4-pro"' | Set-Content "$env:USERPROFILE\.codex\config.toml"
+  Stop-Process -Name "Codex" -Force -ErrorAction SilentlyContinue
+  Start-Sleep 1
+  Start-Process "Codex.exe"
+  Write-Host "→ deepseek-v4-pro"
+}
+```
+
+Restart PowerShell (or run `. $PROFILE`). Then:
+
+```powershell
+codex-mimo    # start proxy + switch to mimo-v2.5-pro + launch Codex
+codex-ds      # start proxy + switch to deepseek-v4-pro + launch Codex
+```
+
+> **Note:** If Codex is installed in a non-default location, replace `"Codex.exe"` with the full path.
+
 ## Difference from upstream mimo2codex
 
 | | mimo2codex | mimo-multi |
