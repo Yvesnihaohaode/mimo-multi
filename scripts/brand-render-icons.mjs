@@ -24,25 +24,19 @@ import { writeFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 const brandTraySvg = resolve(root, "package/brand/tray.svg");
 const brandPng1024 = resolve(root, "package/brand/logo-1024.png");
 // Contributor-supplied raster sources (PR #43 — @starlsd93-sudo).
 // The contributor delivered .ico files; we keep PNG mirrors alongside them
-// because sharp-cli@4 (libvips-backed) doesn't decode .ico without an
-// ImageMagick loader. The PNGs were extracted once with System.Drawing on
-// Windows — see package/brand/contributed-by-starlsd93/readme.md.
-//
-// Sizing strategy: render Windows app icon (16..256) from the 256 PNG; the
-// tray (16/32/48) from the 64 PNG so small sizes downsample from a closer
-// native source. Mac .icns gets a 1024 upscale from the 512 PNG.
-// Use repo-relative paths — sharp-cli on Windows chokes on backslash-style
-// absolute paths from `resolve()`, and we already set `cwd: root` on every
-// execSync below. Forward slashes work for both shells (cmd / pwsh / bash).
-const contribAppPng256 = "package/brand/contributed-by-starlsd93/Mimo_Orange_256.png";
+// (extracted once with System.Drawing on Windows — see the readme.md in
+// that dir) because sharp-cli@4's libvips backend doesn't decode .ico.
+// Only the 512 PNG is used directly — for the .icns upscale to 1024.
+// Use a repo-relative path; sharp-cli on Windows chokes on backslash-style
+// absolute paths, and execSync calls below all set `cwd: root`.
 const contribAppPng512 = "package/brand/contributed-by-starlsd93/Mimo_Orange_512.png";
-const contribTrayPng64 = "package/brand/contributed-by-starlsd93/Mimo_Orange_64.png";
 
 mkdirSync(resolve(root, "package/win"), { recursive: true });
 mkdirSync(resolve(root, "package/mac"), { recursive: true });
@@ -61,27 +55,41 @@ writeFileSync(trayMonoPath, trayMonoSvg, "utf8");
 execSync(`npx --yes sharp-cli@4 -i .tmp-tray-mono.svg -o package/mac/tray-Template.png resize 32 32`, { stdio: "inherit", cwd: root });
 execSync(`npx --yes sharp-cli@4 -i .tmp-tray-mono.svg -o package/mac/tray-Template@2x.png resize 64 64`, { stdio: "inherit", cwd: root });
 
-// ── Win tray.ico (small, downsampled from contributor's 64x64 orange .ico) ──
-execSync(`npx --yes sharp-cli@4 -i "${contribTrayPng64}" -o .tmp-tray-16.png resize 16 16`, { stdio: "inherit", cwd: root });
-execSync(`npx --yes sharp-cli@4 -i "${contribTrayPng64}" -o .tmp-tray-32.png resize 32 32`, { stdio: "inherit", cwd: root });
-execSync(`npx --yes sharp-cli@4 -i "${contribTrayPng64}" -o .tmp-tray-48.png resize 48 48`, { stdio: "inherit", cwd: root });
-execSync(`npx --yes png-to-ico@2 .tmp-tray-16.png .tmp-tray-32.png .tmp-tray-48.png > package/win/tray.ico`, { stdio: "inherit", cwd: root, shell: true });
+// ── Win tray.ico ──────────────────────────────────────────────────────────
+// Same logic as icon.ico — copy the contributor's 64x64 .ico directly.
+// Windows tray icons render at 16x16 / 20x20 (with DPI scaling), so 64 →
+// downsample is fine and avoids any PNG-vs-BMP encoding compatibility risk.
+const contribTrayIcoBuf = readFileSync(resolve(root, "package/brand/contributed-by-starlsd93/Mimo_Orange_64.ico"));
+writeFileSync(resolve(root, "package/win/tray.ico"), contribTrayIcoBuf);
 
-// ── Win icon.ico (app icon, multi-size from contributor's 256x256 .ico) ────
-execSync(`npx --yes sharp-cli@4 -i "${contribAppPng256}" -o .tmp-app-16.png resize 16 16`, { stdio: "inherit", cwd: root });
-execSync(`npx --yes sharp-cli@4 -i "${contribAppPng256}" -o .tmp-app-32.png resize 32 32`, { stdio: "inherit", cwd: root });
-execSync(`npx --yes sharp-cli@4 -i "${contribAppPng256}" -o .tmp-app-48.png resize 48 48`, { stdio: "inherit", cwd: root });
-execSync(`npx --yes sharp-cli@4 -i "${contribAppPng256}" -o .tmp-app-64.png resize 64 64`, { stdio: "inherit", cwd: root });
-execSync(`npx --yes sharp-cli@4 -i "${contribAppPng256}" -o .tmp-app-128.png resize 128 128`, { stdio: "inherit", cwd: root });
-execSync(`npx --yes sharp-cli@4 -i "${contribAppPng256}" -o .tmp-app-256.png resize 256 256`, { stdio: "inherit", cwd: root });
-execSync(`npx --yes png-to-ico@2 .tmp-app-16.png .tmp-app-32.png .tmp-app-48.png .tmp-app-64.png .tmp-app-128.png .tmp-app-256.png > package/win/icon.ico`, { stdio: "inherit", cwd: root, shell: true });
+// ── Win icon.ico (app icon) ────────────────────────────────────────────────
+// We just COPY the contributor's largest 512x512 .ico (BMP-encoded inside,
+// guaranteed Windows-compatible — pre-tested, ships with the source).
+// Windows downsamples 512→16/32/48/64/128 internally with no quality loss
+// because we always feed it a source that's >= the requested display size.
+//
+// Why not hand-assemble a multi-size ICO (16/32/48/64/128/256/512)?
+//   • `png-to-ico@2` is hardcoded to output [16,32,48,256] — drops 64/128/512
+//     no matter what input you give it (verified empirically).
+//   • Hand-assembling with PNG-encoded entries works in Explorer but trips
+//     up System.Drawing.Icon and a few older shell extensions — making the
+//     icon unreliable in obscure code paths (Properties dialog, Open With…).
+//   • BMP-encoded multi-size ICO would need a PNG→BMP DIB encoder we don't
+//     have available. The contributor's single-entry BMP 512 is the
+//     simplest format that works everywhere.
+const contribIcoBuf = readFileSync(resolve(root, "package/brand/contributed-by-starlsd93/Mimo_Orange_512.ico"));
+writeFileSync(resolve(root, "package/win/icon.ico"), contribIcoBuf);
 
-// Cleanup temp files
+// Cleanup temp files. Only .tmp-tray-mono.svg is still actively used (for
+// the Mac template image). The .tmp-tray-*.png / .tmp-app-*.png entries
+// stay in the cleanup list as a safety net in case an older copy of this
+// script left them behind on a developer machine.
 const tmpFiles = [
   ".tmp-tray-mono.svg",
   ".tmp-tray-16.png", ".tmp-tray-32.png", ".tmp-tray-48.png",
   ".tmp-app-16.png", ".tmp-app-32.png", ".tmp-app-48.png",
   ".tmp-app-64.png", ".tmp-app-128.png", ".tmp-app-256.png",
+  ".tmp-app-512.png",
 ];
 for (const f of tmpFiles) {
   try { rmSync(resolve(root, f), { force: true }); } catch { /* best-effort */ }
