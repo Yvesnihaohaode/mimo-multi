@@ -2,7 +2,13 @@
   "hero": {
     "title": "mimo2codex",
     "subtitle": "Let the latest OpenAI Codex CLI / desktop talk to **any** modern LLM — locally.",
-    "ctaPrimary": "Get Started",
+    "bullets": {
+      "0": "Local proxy, runs in the background — zero client-side changes",
+      "1": "MiMo · DeepSeek · Kimi · MiniMax · SenseNova all work out of the box",
+      "2": "Pick your install: CLI, Docker, or desktop app"
+    },
+    "ctaDownload": "Download Desktop",
+    "ctaPrimary": "CLI Quickstart",
     "ctaSecondary": "GitHub",
     "ctaTertiary": "View Docs",
     "caption": "One-line install · Local proxy · ASCII-branded boot banner",

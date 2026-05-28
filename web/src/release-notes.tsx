@@ -14,7 +14,7 @@
 // CTA that navigates straight to it.
 
 import type { ReactNode } from "react";
-import { ApiOutlined, DesktopOutlined } from "@ant-design/icons";
+import { ApiOutlined, DesktopOutlined, BugOutlined } from "@ant-design/icons";
 
 export interface BilingualText {
   en: string;
@@ -48,6 +48,71 @@ export interface ReleaseNote {
 // here so the in-app "What's new" modal stays tight — older release detail
 // lives in doc/tag-log.{md,zh.md} for users who want the full history.
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "0.5.6",
+    date: "2026-05-28",
+    title: {
+      en: "Long-conversation 400 hotfix + desktop polish (PR #43)",
+      zh: "长对话 400 修复 + 桌面端打磨（PR #43）",
+    },
+    summary: {
+      en: "Fixes the long-running 400 \"unexpected end of data\" that silently broke chat sessions, plus a round of desktop UX improvements contributed by @starlsd93-sudo.",
+      zh: "修了长对话「unexpected end of data」400 错误，并打磨了一轮桌面端体验（感谢 @starlsd93-sudo 反馈）。",
+    },
+    highlights: [
+      {
+        kind: "fixed",
+        icon: <BugOutlined />,
+        title: {
+          en: "Truncated tool_call.arguments no longer poison the session",
+          zh: "截断的 tool_call.arguments 不再污染会话",
+        },
+        description: {
+          en: "If an upstream stream cut mid tool-call (length / network / cancel), the truncated `arguments` JSON used to stick to the session forever and 400 every later request. mimo2codex now salvages malformed args to `\"{}\"` at three layers. Poisoned sessions revive on the next request; new sessions are immune.",
+          zh: "上游流中途断了 tool call（长度 / 网络 / 取消）时，截断的 `arguments` JSON 之前会粘在会话里持续 400。本版本在三个位置自动改写为 `\"{}\"`，被污染的会话下次请求自动恢复，新会话直接免疫。",
+        },
+        location: { en: "Automatic", zh: "自动生效" },
+      },
+      {
+        kind: "improved",
+        icon: <DesktopOutlined />,
+        title: {
+          en: "Desktop Settings: multi-provider + CLI import (PR #43)",
+          zh: "桌面端设置：多 provider 同框 + 一键导入 CLI 配置（PR #43）",
+        },
+        description: {
+          en: "MiMo / DeepSeek / Generic provider keys + base URLs configurable on one page. First-run detects an existing `~/.mimo2codex/.env` (follows the data-dir pointer for migrated installs) and offers a one-click import.",
+          zh: "MiMo / DeepSeek / Generic 三家的 API Key + Base URL 同框配置。首次启动会检测旧的 `~/.mimo2codex/.env`（迁过 dataDir 的用户按指针文件定位）并弹一键导入。",
+        },
+        location: { en: "Tray → Settings…", zh: "托盘 → Settings…" },
+      },
+      {
+        kind: "new",
+        icon: <DesktopOutlined />,
+        title: {
+          en: "Chinese app menu + top-bar Settings entry (PR #43)",
+          zh: "桌面端中文菜单 + 左上角设置入口（PR #43）",
+        },
+        description: {
+          en: "Unified Chinese menu on Win / Mac / Linux (文件 / 编辑 / 视图 / 窗口 / 帮助). 「文件 → 设置… (Ctrl+, / Cmd+,)」opens Settings directly — no more hunting in the tray.",
+          zh: "三平台统一中文菜单。「文件 → 设置… (Ctrl+, / Cmd+,)」直接弹设置窗，不用再绕系统托盘。",
+        },
+        location: { en: "App menu bar", zh: "顶部应用菜单" },
+      },
+      {
+        kind: "new",
+        icon: <DesktopOutlined />,
+        title: {
+          en: "Refreshed app icon (PR #43)",
+          zh: "应用图标升级（PR #43）",
+        },
+        description: {
+          en: "Higher-resolution orange branding contributed by @starlsd93-sudo — wired up on Windows, macOS, and docweb.",
+          zh: "更高分辨率的橙色图标（@starlsd93-sudo 投稿），Windows / macOS / docweb 三处都换上了。",
+        },
+      },
+    ],
+  },
   {
     version: "0.5.4",
     date: "2026-05-27",

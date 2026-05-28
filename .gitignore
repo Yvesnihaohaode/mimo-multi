@@ -30,3 +30,5 @@ package/desktop/node_modules/
 package/desktop/resources/icons/
 package/desktop/resources/sidecar/
 package/desktop/release/
+.claude/session-notes.md
+.claude/settings.json

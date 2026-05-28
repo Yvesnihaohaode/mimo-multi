@@ -4,7 +4,9 @@
       "Bash(pkill -f \"dist/cli.js\")",
       "Bash(pkill -f \"18800\")",
       "Bash(npx tsc *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Read(//Users/yufeng/Desktop/**)",
+      "Bash(node *)"
     ]
   }
 }

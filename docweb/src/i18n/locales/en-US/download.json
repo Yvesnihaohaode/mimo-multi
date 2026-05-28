@@ -45,7 +45,10 @@
     "s2": "Drag mimo2codex.app into the Applications folder (/Applications).",
     "s3": "Open Terminal, paste the line below and press Enter:",
     "s3Hint": "(This clears the browser-download quarantine flag. Without it, the next step would fail with \"is damaged\". The command produces no output — that's normal.)",
-    "s4": "Double-click mimo2codex.app in Applications. Look for the m2 icon in your menu bar to open the settings panel."
+    "s4": "Double-click mimo2codex.app in Applications. Look for the m2 icon in your menu bar to open the settings panel.",
+    "inlineWarn": "macOS users — must-read: the desktop build isn't code-signed, so double-clicking will show \"App is damaged\". You'll need to run an `xattr` command to clear the Gatekeeper quarantine.",
+    "inlineCmd": "xattr -cr /Applications/mimo2codex.app",
+    "inlineSeeBelow": "Full 4-step guide ↓"
   },
   "security": {
     "title": "First launch will show a security warning",

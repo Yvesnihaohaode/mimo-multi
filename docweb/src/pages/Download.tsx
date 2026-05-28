@@ -96,7 +96,18 @@ export default function Download() {
   return (
     <div style={{ maxWidth: 920, margin: "0 auto", padding: "32px 24px" }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
-        <img src="/favicon.svg" alt="mimo2codex" width={128} height={128} style={{ marginBottom: 16 }} />
+        <img
+          src="/favicon.ico"
+          alt="mimo2codex"
+          width={128}
+          height={128}
+          style={{
+            marginBottom: 16,
+            borderRadius: 22,
+            border: "1px solid #e8e8e8",
+            boxShadow: "0 4px 14px rgba(0, 0, 0, 0.06)",
+          }}
+        />
         <Typography.Title level={2} style={{ marginBottom: 4 }}>
           {t("title")}
         </Typography.Title>
@@ -155,6 +166,35 @@ export default function Download() {
                   {new Date(release.publishedAt).toLocaleDateString()}
                 </Typography.Text>
               </Space>
+              {/*
+                Inline warning ABOVE the primary CTA — on Mac, the xattr step
+                is mandatory after install and users skim past the full Steps
+                card below. Putting a compact reminder right above the button
+                they're about to click is the only placement they can't miss.
+                Includes the actual command as a copyable code block so the
+                "save this" message is actionable, not just informational.
+              */}
+              {platform === "mac" && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={t("macSteps.inlineWarn")}
+                  description={
+                    <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                      <Typography.Text
+                        code
+                        copyable={{ text: t("macSteps.inlineCmd") }}
+                        style={{ fontSize: 13 }}
+                      >
+                        {t("macSteps.inlineCmd")}
+                      </Typography.Text>
+                      <a href="#mac-install-steps" style={{ fontSize: 12 }}>
+                        {t("macSteps.inlineSeeBelow")}
+                      </a>
+                    </Space>
+                  }
+                />
+              )}
               <Button
                 type="primary"
                 size="large"
@@ -256,29 +296,22 @@ export default function Download() {
         </Card>
       )}
 
-      <Card title={t("why.title")} style={{ marginBottom: 24 }}>
-        <Space direction="vertical" size={12}>
-          <div>🖥️ <strong>{t("why.bg.title")}</strong> — {t("why.bg.detail")}</div>
-          <div>⚙️ <strong>{t("why.tray.title")}</strong> — {t("why.tray.detail")}</div>
-          <div>🔄 <strong>{t("why.autostart.title")}</strong> — {t("why.autostart.detail")}</div>
-        </Space>
-      </Card>
-
       {/*
-        Mac install steps are pulled out into their own info-Alert above the
-        generic security warning. Two reasons:
-        1. The xattr command is mandatory for unsigned .app launched from a
-           browser-downloaded .zip — without it, every Mac user hits "App is
-           damaged, can't be opened". Burying it in a warning paragraph means
-           users skim past it and file a bug.
-        2. The command needs to be copy-pasted exactly; Antd's `copyable`
-           code block is the right primitive. A free-text paragraph forces
-           manual selection.
-        Shown to mac platform (detected or overridden); fallback warning below
-        still covers the "user didn't read the steps" path.
+        Mac install steps moved here — immediately after the Download card,
+        BEFORE the (less-urgent) "Why" pitch and security warning. Reason:
+        Mac downloaders need to see the xattr command without scrolling.
+        The compact inline Alert inside the Download card already flagged
+        it; this full 4-step card is the destination of that card's
+        "Full 4-step guide ↓" anchor link (#mac-install-steps).
+
+        The xattr command is mandatory for unsigned .app launched from a
+        browser-downloaded .zip — without it, every Mac user hits "App is
+        damaged, can't be opened". Burying it lower meant users skimmed
+        past it and filed bugs.
       */}
       {platform === "mac" && (
         <Alert
+          id="mac-install-steps"
           type="info"
           showIcon
           message={t("macSteps.title")}
@@ -307,9 +340,17 @@ export default function Download() {
               </ol>
             </Space>
           }
-          style={{ marginBottom: 16 }}
+          style={{ marginBottom: 24, scrollMarginTop: 60 }}
         />
       )}
+
+      <Card title={t("why.title")} style={{ marginBottom: 24 }}>
+        <Space direction="vertical" size={12}>
+          <div>🖥️ <strong>{t("why.bg.title")}</strong> — {t("why.bg.detail")}</div>
+          <div>⚙️ <strong>{t("why.tray.title")}</strong> — {t("why.tray.detail")}</div>
+          <div>🔄 <strong>{t("why.autostart.title")}</strong> — {t("why.autostart.detail")}</div>
+        </Space>
+      </Card>
 
       <Alert
         type="warning"
