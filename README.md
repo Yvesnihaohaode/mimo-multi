@@ -29,6 +29,23 @@ flowchart LR
 
 > Based on mimo2codex v0.5.5 by [7as0nch](https://github.com/7as0nch). All credit for the core proxy goes to the original author. This fork adds one killer feature: **visual fallback**.
 
+## Table of Contents
+
+- [Visual Fallback](#visual-fallback)
+- [Install](#install)
+  - [Docker (One-Click)](#docker-one-click)
+  - [Auto Setup (Recommended for Local Dev)](#auto-setup-recommended-for-local-dev)
+  - [Manual (5 Steps)](#manual-5-steps)
+- [Usage](#usage)
+  - [Option 1: Manual](#option-1-manual-works-immediately-after-install)
+  - [Option 2: One-command start + model switch](#option-2-one-command-start--model-switch-recommended)
+- [Windows](#windows)
+  - [Install](#install-1)
+  - [One-command start + model switch (PowerShell)](#one-command-start--model-switch-powershell)
+- [Difference from upstream mimo2codex](#difference-from-upstream-mimo2codex)
+- [Upstream Sync](#upstream-sync)
+- [License](#license)
+
 ## Visual Fallback
 
 The problem: powerful models like `deepseek-v4-pro` don't support images. Send a photo → `404` error. You had to manually switch models — annoying.
