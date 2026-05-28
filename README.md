@@ -15,28 +15,34 @@
 
 **Enhanced fork of [mimo2codex](https://github.com/7as0nch/mimo2codex) with automatic visual fallback.**
 
-When you send an image to a non-vision model (e.g., `mimo-v2.5-pro`, `deepseek-v4-pro`), mimo-multi automatically detects it and seamlessly switches to a vision-capable model — no manual model switching, no error messages, no restart.
+When you send an image to a non-vision model (e.g., `deepseek-v4-pro`), mimo-multi auto-detects it and seamlessly switches to a vision model — no errors, no manual switching.
+
+```mermaid
+flowchart LR
+    A["Codex<br/>+ image"] --> B["mimo-multi<br/>:8788"]
+    B --> C{"Has image<br/>+ model lacks<br/>vision?"}
+    C -->|"No"| D["Original model<br/>(deepseek-v4-pro)"]
+    C -->|"Yes"| E["Vision model<br/>(mimo-v2.5)"]
+    D --> F["Response"]
+    E --> F
+```
 
 > Based on mimo2codex v0.5.5 by [7as0nch](https://github.com/7as0nch). All credit for the core proxy goes to the original author. This fork adds one killer feature: **visual fallback**.
 
 ## Visual Fallback
 
-The problem: many powerful models (`mimo-v2.5-pro`, `deepseek-v4-pro`, `mimo-v2-flash`) don't support image input. Send them a photo and you get a `404: No endpoints found that support image input` error. The workaround was to manually switch models every time you needed vision — annoying and breaks your flow.
+The problem: powerful models like `deepseek-v4-pro` don't support images. Send a photo → `404` error. You had to manually switch models — annoying.
 
-mimo-multi fixes this transparently:
+mimo-multi fixes this transparently. When the proxy detects an image in a request to a non-vision model, it automatically reroutes to an available vision model:
 
 ```
-Codex sends image → mimo-multi detects it → checks model capability → auto-switches to vision model
-                          ↑
-                   [visual-fallback] deepseek-v4-pro → mimo-v2.5 (image detected)
+[visual-fallback] deepseek-v4-pro → mimo-v2.5 (image detected)
 ```
 
-- **Capability-based routing**: reads each model's `supportsImages` flag instead of hardcoded lists
-- **Same-provider first**: MiMo pro/flash → `mimo-v2.5`; falls back cross-provider when needed
-- **Responses API**: detects `input_image` type in `payload.input[].content[]`
-- **Chat Completions API**: detects `image_url` type in `payload.messages[].content[]`
-- **Zero config**: works out of the box, no flags, no settings
-- **Log visible**: `[visual-fallback]` messages appear in the proxy logs so you know when it fires
+- **Capability-based routing** — reads `supportsImages` flag, not hardcoded lists
+- **Same-provider first** — MiMo pro → `mimo-v2.5`; cross-provider as fallback
+- **Zero config** — no flags, no settings
+- **Log visible** — `[visual-fallback]` in proxy logs when it fires
 
 ## Install
 

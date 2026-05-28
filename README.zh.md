@@ -14,28 +14,34 @@
 
 **[mimo2codex](https://github.com/7as0nch/mimo2codex) 的增强 fork，核心功能：视觉回退。**
 
-当你给不支持视觉的模型（如 `mimo-v2.5-pro`、`deepseek-v4-pro`）发送图片时，mimo-multi 会自动检测并**无缝切换**到视觉模型——不需要手动换模型、不会报错、不用重启。
+当你给不支持视觉的模型（如 `deepseek-v4-pro`）发图片时，mimo-multi 自动检测并切换到视觉模型——不会报错、不用手动切。
+
+```mermaid
+flowchart LR
+    A["Codex<br/>发图片"] --> B["mimo-multi<br/>:8788"]
+    B --> C{"图片 + 模型<br/>不支持视觉?"}
+    C -->|"否"| D["原模型<br/>(deepseek-v4-pro)"]
+    C -->|"是"| E["视觉模型<br/>(mimo-v2.5)"]
+    D --> F["返回结果"]
+    E --> F
+```
 
 > 基于 mimo2codex v0.5.5，原作者 [7as0nch](https://github.com/7as0nch)。核心代理的所有功劳归于原作者。本 fork 只加了一个杀手级功能：**视觉回退**。
 
 ## 视觉回退
 
-很多强大模型（`mimo-v2.5-pro`、`deepseek-v4-pro`、`mimo-v2-flash`）不支持图片输入。你给它发张图就会报 `404: No endpoints found that support image input`。以前的方案是手动切模型——烦人且打断思路。
+很多强大模型（如 `deepseek-v4-pro`）不支持图片。发张图就报 `404`，以前得手动切模型——烦人。
 
-mimo-multi 把它做成透明的：
+mimo-multi 把它做成透明的。代理检测到非视觉模型收到图片时，自动路由到可用的视觉模型：
 
 ```
-Codex 发图片 → mimo-multi 检测到 → 查模型能力 → 自动切到视觉模型
-                       ↑
-              [visual-fallback] deepseek-v4-pro → mimo-v2.5 (image detected)
+[visual-fallback] deepseek-v4-pro → mimo-v2.5 (image detected)
 ```
 
-- **能力路由**: 读取每个模型的 `supportsImages` 字段，而非硬编码名单
-- **同 provider 优先**: MiMo pro/flash → `mimo-v2.5`；必要时间跨 provider 切换
-- **Responses API**: 检测 `payload.input[].content[]` 中的 `input_image` 类型
-- **Chat Completions API**: 检测 `payload.messages[].content[]` 中的 `image_url` 类型
-- **零配置**: 开箱即用，无需任何设置
-- **日志可见**: 代理日志中会显示 `[visual-fallback]` 信息，发生切换时一目了然
+- **能力路由** — 读取 `supportsImages` 字段，非硬编码
+- **同 provider 优先** — MiMo pro → `mimo-v2.5`；必要时跨 provider
+- **零配置** — 开箱即用
+- **日志可见** — 代理日志显示 `[visual-fallback]`
 
 ## 安装
 
