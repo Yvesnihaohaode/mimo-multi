@@ -39,45 +39,31 @@ Codex 发图片 → mimo-multi 检测到 → 查模型能力 → 自动切到视
 
 ## 安装
 
-### npm（全局安装）
+三种方式任选，各取所需。
+
+### Docker（一键使用）
+
+不需要 Node.js，不用 clone 代码，有 Docker 就能跑。
 
 ```bash
-npm install -g mimo-multi
+docker run -d -p 8788:8788 \
+  -e MIMO_API_KEY=你的MiMo密钥 \
+  -e DS_API_KEY=你的DeepSeek密钥 \
+  yvesnihaohaode/mimo-multi:latest
 ```
 
-需要 Node.js >= 18。
+管理界面：`http://localhost:8788/admin`  
+Docker Hub：[yvesnihaohaode/mimo-multi](https://hub.docker.com/repository/docker/yvesnihaohaode/mimo-multi)
 
-### Docker（一键部署）
+### 自动安装（推荐本地开发）
+
+一条命令完成所有配置，无需手动编辑文件。
 
 ```bash
-git clone https://github.com/Yvesnihaohaode/mimo-multi.git
-cd mimo-multi
-cp .env.example .env   # 编辑 .env 填入 API Key
-docker compose up -d
+npx mimo-multi setup
 ```
 
-管理界面访问 `http://localhost:8788/admin`，数据持久化在 `./.mimo-multi/`。
-
-预构建镜像即将上线 GitHub Container Registry。
-
-## 快速开始
-
-### 自动配置（推荐）
-
-一条命令，无需手动编辑文件：
-
-```bash
-npm install -g mimo-multi
-mimo-multi setup
-```
-
-配置向导会依次询问：
-1. 选择默认模型（v2.5-pro / v2-pro / v2.5 / v2-omni / v2-flash）
-2. 输入 MiMo API Key
-3. 是否启用 1M 长上下文
-4. 是否启用视觉自动回退（非视觉模型收到图片时自动切 v2.5）
-
-`~/.codex/auth.json` 和 `~/.codex/config.toml` 自动生成——不用手动写 JSON/TOML，不会打错字、不会格式错误。
+配置向导会依次询问 API Key 和模型偏好，自动生成 `~/.codex/auth.json` 和 `~/.codex/config.toml`——不用手写 JSON/TOML，不会打错字、不会格式错误。
 
 然后启动：
 
@@ -88,10 +74,10 @@ mimo-multi --port 8788
 
 打开 Codex 就能用了。发张图试试，代理日志里会看到 `[visual-fallback]`。
 
-### 手动配置
+### 手动安装（5 步）
 
 <details>
-<summary>5 步手动配置（点击展开）</summary>
+<summary>想完全掌控每一步 — 点击展开</summary>
 
 ### 1. 获取 MiMo API Key
 

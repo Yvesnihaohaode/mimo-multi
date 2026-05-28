@@ -40,48 +40,33 @@ Codex sends image → mimo-multi detects it → checks model capability → auto
 
 ## Install
 
-### npm (global)
+Three ways to install — pick the one that fits you best.
+
+### Docker (One-Click)
+
+No Node.js, no git clone. Just Docker and your API keys.
 
 ```bash
-npm install -g mimo-multi
+docker run -d -p 8788:8788 \
+  -e MIMO_API_KEY=your-mimo-api-key \
+  -e DS_API_KEY=your-deepseek-api-key \
+  yvesnihaohaode/mimo-multi:latest
 ```
 
-Requires Node.js >= 18.
+Admin UI at `http://localhost:8788/admin`.  
+Docker Hub: [yvesnihaohaode/mimo-multi](https://hub.docker.com/repository/docker/yvesnihaohaode/mimo-multi)
 
-### Docker (one-command)
+### Auto Setup (Recommended for Local Dev)
+
+One command sets up everything — no manual file editing.
 
 ```bash
-# Clone and start
-git clone https://github.com/Yvesnihaohaode/mimo-multi.git
-cd mimo-multi
-cp .env.example .env   # edit .env with your API keys
-docker compose up -d
+npx mimo-multi setup
 ```
 
-The admin UI is available at `http://localhost:8788/admin`. Data persists in `./.mimo-multi/`.
+The wizard asks you for your API key and model preference, then writes `~/.codex/auth.json` and `~/.codex/config.toml` automatically — no JSON/TOML editing, no typos, no formatting errors.
 
-Pre-built images coming soon to GitHub Container Registry.
-
-## Quick Start
-
-### Auto Configuration (Recommended)
-
-One command, no manual file editing:
-
-```bash
-npm install -g mimo-multi
-mimo-multi setup
-```
-
-The wizard will ask you:
-1. Pick a default model (v2.5-pro / v2-pro / v2.5 / v2-omni / v2-flash)
-2. Enter your MiMo API Key
-3. Enable 1M context window
-4. Enable visual auto-fallback
-
-It writes `~/.codex/auth.json` and `~/.codex/config.toml` automatically — no JSON/TOML editing, no typos, no formatting errors.
-
-Then just run:
+Then start the proxy:
 
 ```bash
 export MIMO_API_KEY=your-mimo-api-key
@@ -90,10 +75,10 @@ mimo-multi --port 8788
 
 Open Codex and start chatting. Send an image and watch the proxy logs for `[visual-fallback]`.
 
-### Manual Configuration
+### Manual (5 Steps)
 
 <details>
-<summary>5-step manual setup (click to expand)</summary>
+<summary>For full control — click to expand</summary>
 
 ### 1. Get a MiMo API Key
 
