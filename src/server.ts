@@ -440,11 +440,12 @@ async function handleResponses(
     wireApi: provider.wireApi ?? "chat",
     apiKeySource,
   });
-  if (rewriteNotice) {
+  if (rewriteNotice && !cfg.silentRewrite) {
     // INFO, not WARN — this is a graceful fallback, not an error. The request
     // continues normally with the provider's default model. Kept visible (not
     // debug) because silent rewrites can mask capability mismatches (e.g. a
     // vision request silently routed to a non-vision default model).
+    // Set MIMO2CODEX_SILENT_REWRITE=1 to suppress this message.
     log.info("model fallback applied — client sent unknown model id, request continues with provider default", {
       provider: provider.id,
       from: rewriteNotice.from,
@@ -489,7 +490,7 @@ async function handleResponses(
 
   const startedAt = Date.now();
   const requestBodySnapshot = bodyForLog(payload);
-  const rewriteLogFields = rewriteNotice
+  const rewriteLogFields = rewriteNotice && !cfg.silentRewrite
     ? (() => {
         const w = rewriteWarning(rewriteNotice);
         return { error_code: w.code, error_snippet: w.message };
@@ -717,7 +718,7 @@ async function handleResponsesPassthrough(
 
   const startedAt = Date.now();
   const requestBodySnapshot = bodyForLog(payload);
-  const rewriteLogFields = rewriteNotice
+  const rewriteLogFields = rewriteNotice && !cfg.silentRewrite
     ? (() => {
         const w = rewriteWarning(rewriteNotice);
         return { error_code: w.code, error_snippet: w.message };
@@ -1068,7 +1069,7 @@ async function handleChatPassthrough(
     upstreamModel,
     apiKeySource,
   });
-  if (rewriteNotice) {
+  if (rewriteNotice && !cfg.silentRewrite) {
     // INFO, not WARN — see handleResponses for the rationale.
     log.info("model fallback applied — client sent unknown model id, request continues with provider default", {
       provider: provider.id,
@@ -1092,7 +1093,7 @@ async function handleChatPassthrough(
 
   const startedAt = Date.now();
   const requestBodySnapshot = bodyForLog(payload);
-  const rewriteLogFields = rewriteNotice
+  const rewriteLogFields = rewriteNotice && !cfg.silentRewrite
     ? (() => {
         const w = rewriteWarning(rewriteNotice);
         return { error_code: w.code, error_snippet: w.message };
