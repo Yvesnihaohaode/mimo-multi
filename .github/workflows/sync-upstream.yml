@@ -5,7 +5,7 @@ name: Sync Upstream
 
 on:
   schedule:
-    - cron: '7 8 * * *'  # Every day at 08:07 UTC (16:07 Beijing)
+    - cron: '0 20 * * *'  # Every day at 20:00 UTC (04:00 Beijing)
   workflow_dispatch:
     inputs:
       dry_run:
