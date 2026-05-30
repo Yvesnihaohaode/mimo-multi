@@ -62,13 +62,15 @@ jobs:
         if: steps.check.outputs.has_updates == 'true'
         id: merge
         run: |
-          if git merge --no-commit --no-ff upstream/main 2>&1 | tee /tmp/merge.log; then
-            echo "Merge succeeded with no conflicts."
-            echo "conflict=false" >> $GITHUB_OUTPUT
-          else
+          git merge --no-commit --no-ff upstream/main 2>&1 | tee /tmp/merge.log
+          # Check for unmerged files (conflict markers)
+          if git diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
             echo "Merge has conflicts."
             echo "conflict=true" >> $GITHUB_OUTPUT
             git merge --abort 2>/dev/null || true
+          else
+            echo "Merge succeeded with no conflicts."
+            echo "conflict=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Check if conflict touches server.ts
