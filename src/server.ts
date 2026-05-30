@@ -62,6 +62,20 @@ function resolveForceHighEffort(cfg: Config): boolean {
   }
 }
 
+// silentRewrite 解析：env (cfg.silentRewriteFromCli) > admin settings DB > true。
+// 注意默认是 **静默**（true）—— admin UI 顶部「更多」里有快速开关。每请求调一次，
+// admin 改了立即生效，无需重启。
+function resolveSilentRewrite(cfg: Config): boolean {
+  if (cfg.silentRewriteFromCli !== undefined) return cfg.silentRewriteFromCli;
+  if (!cfg.adminEnabled) return true;
+  try {
+    const s = getSetting("logging.silentRewrite");
+    return s === null ? true : s !== "0";
+  } catch {
+    return true;
+  }
+}
+
 const KEEPALIVE_INTERVAL_MS = 15_000;
 
 async function readJsonBody<T>(req: IncomingMessage, maxBytes = 16 * 1024 * 1024): Promise<T> {
@@ -498,11 +512,12 @@ async function handleResponses(
     wireApi: provider.wireApi ?? "chat",
     apiKeySource,
   });
-  if (rewriteNotice) {
+  if (rewriteNotice && !resolveSilentRewrite(cfg)) {
     // INFO, not WARN — this is a graceful fallback, not an error. The request
     // continues normally with the provider's default model. Kept visible (not
     // debug) because silent rewrites can mask capability mismatches (e.g. a
     // vision request silently routed to a non-vision default model).
+    // Set MIMO2CODEX_SILENT_REWRITE=1 to suppress this message.
     log.info("model fallback applied — client sent unknown model id, request continues with provider default", {
       provider: provider.id,
       from: rewriteNotice.from,
@@ -547,7 +562,7 @@ async function handleResponses(
 
   const startedAt = Date.now();
   const requestBodySnapshot = bodyForLog(payload);
-  const rewriteLogFields = rewriteNotice
+  const rewriteLogFields = rewriteNotice && !resolveSilentRewrite(cfg)
     ? (() => {
         const w = rewriteWarning(rewriteNotice);
         return { error_code: w.code, error_snippet: w.message };
@@ -775,7 +790,7 @@ async function handleResponsesPassthrough(
 
   const startedAt = Date.now();
   const requestBodySnapshot = bodyForLog(payload);
-  const rewriteLogFields = rewriteNotice
+  const rewriteLogFields = rewriteNotice && !resolveSilentRewrite(cfg)
     ? (() => {
         const w = rewriteWarning(rewriteNotice);
         return { error_code: w.code, error_snippet: w.message };
@@ -1146,7 +1161,7 @@ async function handleChatPassthrough(
     upstreamModel,
     apiKeySource,
   });
-  if (rewriteNotice) {
+  if (rewriteNotice && !resolveSilentRewrite(cfg)) {
     // INFO, not WARN — see handleResponses for the rationale.
     log.info("model fallback applied — client sent unknown model id, request continues with provider default", {
       provider: provider.id,
@@ -1170,7 +1185,7 @@ async function handleChatPassthrough(
 
   const startedAt = Date.now();
   const requestBodySnapshot = bodyForLog(payload);
-  const rewriteLogFields = rewriteNotice
+  const rewriteLogFields = rewriteNotice && !resolveSilentRewrite(cfg)
     ? (() => {
         const w = rewriteWarning(rewriteNotice);
         return { error_code: w.code, error_snippet: w.message };
