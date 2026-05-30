@@ -32,3 +32,4 @@ package/desktop/resources/sidecar/
 package/desktop/release/
 .claude/session-notes.md
 .claude/settings.json
+.claude/worktrees/

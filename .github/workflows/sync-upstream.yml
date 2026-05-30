@@ -53,6 +53,11 @@ jobs:
             echo "has_updates=true" >> $GITHUB_OUTPUT
           fi
 
+      - name: Configure git identity
+        run: |
+          git config user.name "mimo-multi[bot]"
+          git config user.email "bot@mimo-multi.dev"
+
       - name: Attempt merge
         if: steps.check.outputs.has_updates == 'true'
         id: merge
@@ -90,8 +95,6 @@ jobs:
       - name: Commit and push merge
         if: steps.merge.outputs.conflict == 'false' && steps.check.outputs.has_updates == 'true' && inputs.dry_run != true
         run: |
-          git config user.name "mimo-multi[bot]"
-          git config user.email "bot@mimo-multi.dev"
           git commit -m "chore: sync upstream $(git rev-parse --short upstream/main)
 
           Auto-merged from mimo2codex upstream. All tests passed."
