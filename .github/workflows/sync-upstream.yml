@@ -64,9 +64,11 @@ jobs:
         run: |
           git merge --no-commit --no-ff upstream/main 2>&1 | tee /tmp/merge.log
           # Check for unmerged files (conflict markers)
-          if git diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+          CONFLICT_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "")
+          if [ -n "$CONFLICT_FILES" ]; then
             echo "Merge has conflicts."
             echo "conflict=true" >> $GITHUB_OUTPUT
+            echo "conflict_files=$CONFLICT_FILES" >> $GITHUB_OUTPUT
             git merge --abort 2>/dev/null || true
           else
             echo "Merge succeeded with no conflicts."
@@ -77,7 +79,7 @@ jobs:
         if: steps.merge.outputs.conflict == 'true'
         id: conflict_check
         run: |
-          CONFLICT_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "")
+          CONFLICT_FILES="${{ steps.merge.outputs.conflict_files }}"
           if echo "$CONFLICT_FILES" | grep -q "src/server.ts"; then
             echo "CRITICAL: Conflict in src/server.ts — needs manual resolution."
             echo "critical=true" >> $GITHUB_OUTPUT
@@ -128,7 +130,7 @@ jobs:
             });
         env:
           UPSTREAM_SHA: ${{ steps.versions.outputs.upstream }}
-          CONFLICT_FILES: ${{ steps.conflict_check.outputs.files }}
+          CONFLICT_FILES: ${{ steps.merge.outputs.conflict_files }}
 
       - name: Create issue on non-critical conflict
         if: steps.conflict_check.outputs.critical == 'false' && steps.merge.outputs.conflict == 'true' && inputs.dry_run != true
@@ -147,7 +149,7 @@ jobs:
               labels: ['upstream-sync']
             });
         env:
-          CONFLICT_FILES: ${{ steps.conflict_check.outputs.files }}
+          CONFLICT_FILES: ${{ steps.merge.outputs.conflict_files }}
 
       - name: Summary
         run: |
