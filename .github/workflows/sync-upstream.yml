@@ -62,7 +62,7 @@ jobs:
         if: steps.check.outputs.has_updates == 'true'
         id: merge
         run: |
-          git merge --no-commit --no-ff upstream/main 2>&1 | tee /tmp/merge.log
+          git merge --no-commit --no-ff upstream/main 2>&1 | tee /tmp/merge.log || true
           # Check for unmerged files (conflict markers)
           CONFLICT_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "")
           if [ -n "$CONFLICT_FILES" ]; then
@@ -93,6 +93,7 @@ jobs:
         if: steps.merge.outputs.conflict == 'false' && steps.check.outputs.has_updates == 'true'
         run: |
           npm install
+          git add package-lock.json
           npm run build
           npm test
 
