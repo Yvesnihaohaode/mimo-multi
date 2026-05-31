@@ -45,8 +45,8 @@ jobs:
       - name: Check if upstream has new commits
         id: check
         run: |
-          if [ "${{ steps.versions.outputs.current }}" = "${{ steps.versions.outputs.upstream }}" ]; then
-            echo "No new upstream commits. Skipping."
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Upstream already incorporated. Skipping."
             echo "has_updates=false" >> $GITHUB_OUTPUT
           else
             echo "Upstream has new commits."
@@ -99,10 +99,14 @@ jobs:
       - name: Commit and push merge
         if: steps.merge.outputs.conflict == 'false' && steps.check.outputs.has_updates == 'true' && inputs.dry_run != true
         run: |
-          git commit -m "chore: sync upstream $(git rev-parse --short upstream/main)
+          if git diff --staged --quiet; then
+            echo "Nothing to commit (already up to date)."
+          else
+            git commit -m "chore: sync upstream $(git rev-parse --short upstream/main)
 
           Auto-merged from mimo2codex upstream. All tests passed."
-          git push origin main
+            git push origin main
+          fi
 
       - name: Publish to npm
         if: steps.merge.outputs.conflict == 'false' && steps.check.outputs.has_updates == 'true' && inputs.dry_run != true
